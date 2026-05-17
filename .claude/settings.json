@@ -1,0 +1,79 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xargs -I {} sh -c \"echo '=== {} ===' && head -30 {}\")",
+      "Bash(grep -E \"\\\\.tsx$\")",
+      "Bash(npm install *)",
+      "Bash(eas build *)",
+      "Bash(Get-Content \"C:\\\\Users\\\\engin\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-engin-Desktop-family-safety-monitor\\\\cb854183-0702-4c1d-b254-db488b51adbe\\\\tasks\\\\brshr12n2.output\" -Wait)",
+      "Bash(Get-Content \"C:\\\\Users\\\\engin\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-engin-Desktop-family-safety-monitor\\\\cb854183-0702-4c1d-b254-db488b51adbe\\\\tasks\\\\brshr12n2.output\")",
+      "Bash(npm run *)",
+      "Bash(node -e \"const m = require\\('module'\\); console.log\\(m.builtinModules.includes\\('electron'\\)\\); const e = require\\('electron'\\); console.log\\(typeof e\\)\")",
+      "PowerShell(Get-Process -Name \"electron\" -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force)",
+      "PowerShell(Start-Process -FilePath \"node\" -ArgumentList \"launch-electron.js\" -WorkingDirectory \"C:\\\\Users\\\\engin\\\\Desktop\\\\family-safety-monitor\\\\frontend-react\" -NoNewWindow)",
+      "Edit(/.claude/skills/health-check/**)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\);process.stdin.on\\('end',\\(\\)=>{try{const j=JSON.parse\\(d\\);const f=\\(j.tool_input&&j.tool_input.file_path\\)||\\(j.tool_response&&j.tool_response.filePath\\);if\\(f\\)console.log\\('Would format:',f\\)}catch\\(e\\){console.error\\(e\\)}}\\)\")",
+      "Bash(node -e \"JSON.parse\\(require\\('fs'\\).readFileSync\\('C:/Users/engin/Desktop/family-safety-monitor/.claude/settings.json','utf8'\\)\\); console.log\\('JSON geçerli'\\)\")",
+      "Bash(claude -p \"start expo dev server in background and verify it's serving on :19000\" --allowedTools \"Bash,Read\")",
+      "Bash(echo \"Write OK\")",
+      "Read(//tmp/**)",
+      "Bash(xargs grep *)",
+      "Bash(python -m py_compile backend/main.py)",
+      "Bash(node -c index.js)",
+      "Bash(xargs python *)",
+      "Bash(grep -r \"raise NotImplementedError\\\\|pass$\\\\|TODO\\\\|FIXME\\\\|XXX\" backend/ --include=\"*.py\")",
+      "Bash(.venv/Scripts/pip install *)",
+      "Bash(../.venv/Scripts/uvicorn main:app --host 127.0.0.1 --port 8000)",
+      "Bash(curl -s http://127.0.0.1:8000/health)",
+      "Bash(kill %1)",
+      "Bash(../.venv/Scripts/uvicorn main:app --host 127.0.0.1 --port 8000 --log-level warning)",
+      "Bash(curl -s http://127.0.0.1:8000/api/profiles)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\engin\\Desktop\\family-safety-monitor\\.claude\\skills"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);const f=(j.tool_input&&j.tool_input.file_path)||(j.tool_response&&j.tool_response.filePath);if(f&&/\\.py$/.test(f))require('child_process').execSync('python -m py_compile '+JSON.stringify(f),{stdio:'pipe'})}catch(e){}})\" 2>/dev/null || true"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx eslint --quiet ${file} 2>/dev/null || true"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);const f=(j.tool_input&&j.tool_input.file_path)||(j.tool_response&&j.tool_response.filePath);if(f)require('child_process').execSync('npx prettier --write '+JSON.stringify(f),{stdio:'pipe'})}catch(e){}})\" 2>/dev/null || true"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);const f=(j.tool_input&&j.tool_input.file_path)||(j.tool_response&&j.tool_response.filePath);if(f&&/\\\\.(js|jsx|ts|tsx)$/.test(f))require('child_process').execSync('npx eslint --quiet '+JSON.stringify(f),{stdio:'pipe'})}catch(e){}})\" 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}

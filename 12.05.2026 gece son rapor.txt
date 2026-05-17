@@ -1,0 +1,285 @@
+# Aile Güvenliği Paneli
+
+## Session State Management
+
+- Do not re-read or re-scan files that have already been processed in this session. Use MEMORY.md or TodoWrite to track completed work and remaining tasks.
+- Maintain a MEMORY.md file to track task completion across phases
+- Do NOT re-read files that have already been processed in the current session
+- Before reading any file, check MEMORY.md to see if it was already handled
+- Apply minimal-diff fixes only; do not rescan the codebase between phases
+
+## File & Directory Conventions
+
+- When cloning repos or creating directories, always confirm the exact target path before proceeding. Never nest a folder inside itself (e.g., skills/skills/). Verify the resulting structure after creation.
+
+## Skills & Plugin Location
+
+- Global/reusable skills belong in `~/.claude/skills/` (user home), NOT in project directories
+- Project-specific skills go in `.claude/skills/` within the project
+- When cloning external skills repos, place contents directly in target folder (avoid nested skills/skills/ structures)
+
+## Token Kuralları
+
+- Dosya okumadan önce SADECE ilgili dosyayı oku
+- Tamamlanan dosyayı tekrar okuma
+- context.md'yi her seferinde okuma
+- Değişiklik yapacağın dosyayı oku, diğerlerine dokunma
+- Frontend ve backend ayrı görevler, birlikte okuma
+- Plan modunda çalış: önce 3 satırlık plan göster, onay al, sonra kodla
+
+## Kurallar
+
+- Önce plan göster, onay al, sonra kodla
+- Gereksiz dosya okuma; sadece ilgili dosyayı değiştir
+- `context.md`'yi her seferinde okuma — sadece `/add` komutuyla istenirse bak
+
+## Scope Discipline
+
+- Make minimal-diff, targeted fixes only
+- Do NOT invent issues or fix things the user didn't request (e.g., don't fix wifiCollector or polyfills if they weren't mentioned)
+- If a referenced file/test isn't provided, ASK before assuming
+
+## Bug Fixes
+
+- Before attempting fixes, verify the issue actually exists in the relevant codebase. Ask for clarification on scope rather than assuming.
+
+## State Management
+
+When working on multi-file or multi-phase tasks, create and maintain a MEMORY.md file to track completed files and remaining work. Do NOT re-read files already marked as completed unless explicitly asked.
+
+## Project Structure
+
+- Primary languages: JavaScript, Python, Markdown
+- This is a family-safety-monitor project with Electron frontend, React components, Python backend, and React Native (Expo) mobile app
+- When making fixes, use minimal diffs only — do not refactor or restructure unless explicitly asked
+
+## Skills & Config File Locations
+
+- Global skills go in ~/.claude/skills/, NOT in the project directory
+- Project-specific skills go in .claude/skills/ within the project root
+- Always confirm target directory before creating skill files
+
+## Interactive Processes
+
+Do NOT attempt to run long-lived interactive processes (dev servers, watch modes). Instead, provide the exact command for the user to run manually.
+
+## Proje Açıklaması
+
+iOS ve Android cihaz kullanan aile üyelerini **rızaya dayalı** olarak izleyen güvenlik dashboard'u.
+Amaç: Çocukların dijital güvenliğini sağlamak, riskli içerikleri tespit etmek.
+
+## Teknik Stack
+
+- **Backend:** Python FastAPI + pyicloud + Gmail OAuth (port 8000), X-API-Key middleware
+- **WhatsApp Agent:** Node.js + whatsapp-web.js + better-sqlite3 + Express (port 3001)
+- **Frontend:** React (Vite), apiFetch() wrapper (VITE_API_KEY), Views.jsx / DashboardView.jsx / LiveScreenshots.jsx / WhatsAppMonitor.jsx
+- **Veritabanı:** keyring (profil kalıcılığı) + `whatsapp-agent/data/messages.db` (SQLite)
+- **Bildirim:** SMTP e-posta
+
+## Dosya Yapısı
+
+```
+family-safety-monitor/
+├── backend/
+│   ├── main.py                    # FastAPI ana uygulama, tüm endpoint'ler
+│   ├── requirements.txt
+│   ├── .env.example
+│   └── services/
+│       ├── __init__.py
+│       ├── models.py              # Pydantic modeller
+│       ├── content_filter.py      # Finansal redaksiyon + risk sınıflandırma
+│       ├── icloud_service.py      # iCloud bağlantı, konum, fotoğraf, WhatsApp
+│       ├── gmail_service.py       # Gmail OAuth + e-posta okuma
+│       ├── local_backup_service.py# iTunes/Finder backup: SMS, aramalar, uygulamalar
+│       ├── app_scanner.py         # Uygulama tespiti (Tinder, OnlyFans vb.)
+│       ├── browser_history.py     # Safari/Chrome geçmiş analizi
+│       ├── geo_service.py         # Geofencing (güvenli bölge)
+│       ├── risk_engine.py         # Risk skoru motoru
+│       └── notifier.py            # Ebeveyn e-posta bildirimi
+├── whatsapp-agent/                # Node.js canlı WhatsApp yakalama servisi
+│   ├── package.json
+│   ├── .env.example               # PROFILE_ID, PORT
+│   ├── .gitignore
+│   ├── index.js                   # Giriş noktası — WA client + Express başlatır
+│   └── src/
+│       ├── db.js                  # better-sqlite3 şema + DB yardımcıları
+│       ├── contentFilter.js       # JS port: classifyRisk + redactText
+│       ├── waClient.js            # LocalAuth + Puppeteer factory
+│       ├── messageHandler.js      # on('message'): kaydet + risk analizi
+│       ├── revokeHandler.js       # on('message_revoke_everyone'): is_deleted=1
+│       └── api.js                 # GET /api/messages, /flagged, /health
+├── frontend/                      # React (Vite) uygulaması
+│   ├── src/
+│   │   ├── Views.jsx              # Sekme yönlendirme
+│   │   ├── DashboardView.jsx      # Ana dashboard
+│   │   ├── LiveScreenshots.jsx    # Ekran görüntüleri (map guard ekli)
+│   │   └── WhatsAppMonitor.jsx    # WhatsApp izleme paneli
+│   └── index.html
+├── credentials/                   # Gmail OAuth token'ları
+├── run.sh                         # Linux/Mac başlatma scripti
+└── CLAUDE.md                      # Bu dosya
+```
+
+## Mevcut Özellikler
+
+### Tamamlandı ✅
+
+- iCloud Find My konum takibi
+- iCloud Photos (banka kartı filtreli)
+- iCloud Drive dosya listesi
+- WhatsApp mesajları (iCloud backup SQLite)
+- **Silinen WhatsApp mesajları** (ZDELETED=1 + WAL dosyası)
+- **Medya tespiti** (silinen+medya = yüksek risk)
+- Finansal veri redaksiyonu (kart no, CVV, PIN, OTP, kripto seed)
+- Müstehcen içerik sınıflandırma (HIGH/MEDIUM/LOW)
+- Gmail e-posta (OAuth)
+- 2FA desteği
+- **Uygulama tespiti** (dating, adult, gambling, chat, social)
+- **Tarayıcı geçmişi** (Safari + Chrome, riskli domain tespiti)
+- **Geofencing** (güvenli bölge tanımla, çıkışta uyarı)
+- **Risk skoru sistemi** (günlük 0-100 puan, olay bazlı)
+- **Ebeveyn bildirimi** (e-posta SMTP)
+- **Yerel backup desteği** (iTunes/Finder şifreli+şifresiz backup)
+- **SMS mesajları** (backup sms.db, content_filter uygulanır)
+- **Arama geçmişi** (CallHistory.storedata, gelen/giden/cevapsız)
+- **Tam uygulama listesi** (Manifest.db AppDomain tarama)
+- **Frontend sekmeler** (📱 Uygulamalar, 🌐 Tarayıcı, 📍 Geofence, 📊 Risk Raporu)
+- **WhatsApp Agent** (Node.js, whatsapp-web.js, canlı mesaj + silinen mesaj yakalama, port 3001)
+  - on('message'): body redaksiyon + risk analizi → SQLite
+  - on('message_revoke_everyone'): is_deleted=1, body korunur; oturum öncesi mesajlar için tombstone
+  - GET /api/messages, GET /api/messages/flagged, GET /health
+- **SMS sekmesi** — /api/sms/default bağlantısı, Array.isArray guard
+- **Arama sekmesi** — /api/calls/default bağlantısı, call_type normalize
+- **Profil kalıcılığı** — keyring + backup_path DB'de, başlangıçta auto-reconnect
+- **Backend API auth** — X-API-Key middleware, VITE_API_KEY .env
+- **apiFetch() wrapper** — tüm 52 fetch() çağrısı React'ta apiFetch() ile değiştirildi
+- **React frontend migrate** — Views.jsx, DashboardView.jsx, LiveScreenshots.jsx, WhatsAppMonitor.jsx
+- **Events endpoint** — GET /api/events/{profile_id}
+- **Bookmarks endpoint** — GET /api/bookmarks/{profile_id}
+- **LiveScreenshots TypeError fix** — screenshots.map guard
+
+### Yapılacak 🚧
+
+> **Hedef platform: iPhone (iOS only). Android agent kapsam dışı.**
+
+- [ ] **iPhone Onboarding UI** (bir sonraki görev):
+  - Part 1: iCloud bağlantı formu + 2FA modal (POST /api/auth/icloud, POST /api/auth/2fa)
+  - Part 2: Yerel backup bağlayıcı (POST /api/auth/local-backup)
+  - Part 3: WhatsApp QR paneli (GET /api/whatsapp/qr endpoint + web modal)
+  - Part 4: Bağlantı durumu paneli (GET /api/connections/default endpoint)
+- [ ] Ekran kaydı / görüntüsü yakalama (Eyezy benzeri)
+- [ ] Screen Time API entegrasyonu
+- [ ] Haftalık PDF rapor
+- [ ] Anomali tespiti (gece kullanımı, ani artışlar)
+- [ ] İletişim haritası (kiminle ne sıklıkta)
+
+## API Endpoint'leri
+
+### Profil Yönetimi
+
+- `GET  /api/profiles` — Tüm profiller
+- `POST /api/auth/icloud` — iCloud bağlantısı
+- `POST /api/auth/2fa` — 2FA doğrulama
+- `POST /api/auth/gmail/{id}` — Gmail bağlantısı
+- `POST /api/auth/local-backup` — Yerel iTunes backup bağlantısı (backup_path + passphrase)
+- `DELETE /api/profiles/{id}` — Profil sil
+
+### Veri
+
+- `GET /api/location/{id}` — Konum (+ geofence kontrolü)
+- `GET /api/photos/{id}` — Fotoğraflar
+- `GET /api/drive/{id}` — iCloud Drive
+- `GET /api/messages/{id}` — WhatsApp mesajları
+- `GET /api/messages/{id}/flagged` — Riskli + silinen mesajlar
+- `GET /api/emails/{id}` — Gmail
+
+### Yeni Özellikler
+
+- `GET /api/apps/{id}` — Tespit edilen uygulamalar
+- `GET /api/apps/{id}/flagged` — Riskli uygulamalar
+- `GET /api/browser/{id}` — Tarayıcı geçmişi
+- `GET /api/browser/{id}/flagged` — Riskli siteler
+- `GET /api/zones/{id}` — Güvenli bölgeler
+- `POST /api/zones/{id}` — Bölge ekle
+- `DELETE /api/zones/{id}/{zone_id}` — Bölge sil
+- `GET /api/zones/{id}/alerts` — Bölge uyarıları
+- `GET /api/risk/{id}/report` — Günlük risk raporu
+- `GET /api/risk/{id}/events` — Risk olayları
+- `POST /api/risk/{id}/config` — Bildirim ayarları
+- `GET /api/risk/{id}/config` — Bildirim ayarları oku
+
+### Yerel Backup
+
+- `GET /api/sms/{id}` — SMS mesajları (content_filter uygulanır)
+- `GET /api/sms/{id}/flagged` — Riskli/redakte SMS
+- `GET /api/calls/{id}` — Arama geçmişi (gelen/giden/cevapsız)
+
+### Diğer
+
+- `GET /api/events/{id}` — Risk olayları akışı
+- `GET /api/bookmarks/{id}` — Tarayıcı yer imleri
+- `GET /api/connections/{id}` — Bağlantı durumu (onboarding) _(planlandı)_
+- `GET /api/whatsapp/qr` — WhatsApp QR kodu _(planlandı)_
+
+## Skills & Global Files
+
+- Global/reusable skills belong in `~/.claude/skills/` (NOT in project directories)
+- Project-specific skills go in `.claude/skills/` at the project root
+- When cloning external skill repos, clone directly into the target folder (avoid nested `skills/skills/` structures)
+
+## Git & GitHub
+
+- `gh` CLI is not installed; ask user to create GitHub repos manually rather than attempting `gh repo create`
+- Watch for git submodule issues when pushing new repos and resolve in a single commit when possible
+
+## Güvenlik İlkeleri
+
+1. **Finansal veri toplanmaz** — Kart, CVV, PIN, OTP, kripto bilgileri redakte edilir
+2. **Banka uygulamaları engellenir** — Ekran kaydı/görüntüsü alınmaz
+3. **Veriler yerel kalır** — Ev sunucusu/bilgisayar, buluta gitmez
+4. **Rıza gerekli** — İzlenen kişinin bilgisi dahilinde
+
+## Çalıştırma
+
+### Python Backend (port 8000)
+
+```bash
+cd family-safety-monitor/backend
+cp .env.example .env   # Düzenle
+pip install -r requirements.txt
+uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Dashboard: http://localhost:8000 | API docs: http://localhost:8000/docs
+
+### WhatsApp Agent (port 3001)
+
+```bash
+cd family-safety-monitor/whatsapp-agent
+cp .env.example .env   # PROFILE_ID ve PORT ayarla
+npm install
+node index.js
+# Terminal'de QR kodu tarayın: WhatsApp → Bağlı Cihazlar → Cihaz Ekle
+```
+
+Mesajlar: http://localhost:3001/api/messages | Sağlık: http://localhost:3001/health
+
+### WhatsApp Agent Endpoint'leri
+
+- `GET /api/messages?limit=100` — Tüm mesajlar (Python WhatsAppMessage modeliyle uyumlu)
+- `GET /api/messages/flagged?limit=200` — Riskli + silinen mesajlar
+- `GET /health` — Servis durumu
+
+## Risk Skoru Tablosu
+
+| Olay                    | Puan |
+| ----------------------- | ---- |
+| Silinen mesaj (medyalı) | +40  |
+| Kendi sildiği mesaj     | +30  |
+| Karşı tarafın sildiği   | +20  |
+| Yüksek riskli içerik    | +50  |
+| Orta riskli içerik      | +30  |
+| Yüksek riskli uygulama  | +35  |
+| Riskli site ziyareti    | +35  |
+| Güvenli bölge çıkışı    | +25  |
+| Gece kullanımı          | +15  |

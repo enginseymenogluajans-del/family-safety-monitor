@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aile Güvenliği Paneli</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f2f5; color: #1a1a2e; }
+
+  .layout { display: flex; height: 100vh; }
+
+  /* Sol panel — profiller */
+  .sidebar {
+    width: 260px; min-width: 260px; background: #1a1a2e; color: #e8e8f0;
+    display: flex; flex-direction: column; padding: 16px;
+  }
+  .sidebar h1 { font-size: 15px; font-weight: 700; margin-bottom: 20px; color: #fff; letter-spacing: 0.5px; }
+  .profile-list { flex: 1; overflow-y: auto; }
+  .profile-card {
+    background: #252540; border-radius: 10px; padding: 12px 14px;
+    margin-bottom: 10px; cursor: pointer; transition: background 0.15s;
+    border: 2px solid transparent;
+  }
+  .profile-card:hover { background: #2e2e50; }
+  .profile-card.active { border-color: #4f8ef7; background: #2a2a48; }
+  .profile-card .pname { font-weight: 600; font-size: 14px; }
+  .profile-card .pstatus { font-size: 11px; margin-top: 4px; }
+  .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+  .dot-ok { background: #4caf50; } .dot-err { background: #f44336; } .dot-warn { background: #ff9800; }
+
+  .add-btn {
+    margin-top: 12px; background: #4f8ef7; color: #fff; border: none;
+    border-radius: 8px; padding: 10px; font-size: 13px; cursor: pointer; width: 100%;
+  }
+  .add-btn:hover { background: #3a7ae0; }
+
+  /* Sağ panel */
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  .topbar {
+    background: #fff; padding: 14px 24px; border-bottom: 1px solid #e0e0ea;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .topbar h2 { font-size: 18px; font-weight: 700; flex: 1; }
+  .topbar .refresh-btn {
+    background: #f0f2f5; border: 1px solid #d0d0e0; border-radius: 7px;
+    padding: 6px 14px; font-size: 12px; cursor: pointer;
+  }
+
+  /* Sekmeler */
+  .tabs { background: #fff; border-bottom: 1px solid #e0e0ea; padding: 0 24px; display: flex; gap: 4px; }
+  .tab {
+    padding: 10px 18px; font-size: 13px; font-weight: 500; cursor: pointer;
+    border-bottom: 3px solid transparent; color: #666; transition: all 0.15s;
+  }
+  .tab:hover { color: #4f8ef7; }
+  .tab.active { color: #4f8ef7; border-bottom-color: #4f8ef7; }
+
+  /* İçerik alanı */
+  .content { flex: 1; overflow-y: auto; padding: 24px; }
+
+  /* Konum kartı */
+  .location-card {
+    background: #fff; border-radius: 12px; padding: 20px; margin-bottom: 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  }
+  .location-card .coords { font-size: 20px; font-weight: 700; margin: 8px 0; }
+  .location-card .map-link {
+    display: inline-block; margin-top: 10px; background: #4f8ef7; color: #fff;
+    border-radius: 7px; padding: 8px 16px; text-decoration: none; font-size: 13px;
+  }
+  .battery { color: #666; font-size: 13px; margin-top: 6px; }
+
+  /* Mesaj listesi */
+  .msg-list { display: flex; flex-direction: column; gap: 10px; }
+  .msg-item {
+    background: #fff; border-radius: 10px; padding: 14px 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  }
+  .msg-item .msg-meta { font-size: 11px; color: #888; margin-bottom: 4px; }
+  .msg-item .msg-chat { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+  .msg-item .msg-text { font-size: 14px; line-height: 1.5; }
+  .msg-item.redacted { border-left: 3px solid #ff9800; }
+  .redact-badge {
+    display: inline-block; background: #fff3e0; color: #e65100;
+    border-radius: 4px; font-size: 10px; padding: 1px 5px; margin-left: 6px;
+  }
+
+  /* E-posta listesi */
+  .email-item {
+    background: #fff; border-radius: 10px; padding: 14px 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06); margin-bottom: 10px;
+    cursor: pointer;
+  }
+  .email-item .email-subject { font-weight: 600; font-size: 14px; }
+  .email-item .email-from { font-size: 12px; color: #555; margin-top: 2px; }
+  .email-item .email-snippet { font-size: 13px; color: #777; margin-top: 6px; line-height: 1.4; }
+  .email-item.unread .email-subject { color: #4f8ef7; }
+
+  /* Fotoğraf grid */
+  .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+  .photo-cell {
+    background: #e8e8f0; border-radius: 8px; aspect-ratio: 1;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: #666; overflow: hidden; position: relative;
+  }
+  .photo-cell img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+
+  /* Drive listesi */
+  .drive-item {
+    background: #fff; border-radius: 8px; padding: 12px 16px;
+    margin-bottom: 8px; display: flex; align-items: center; gap: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+  }
+  .drive-icon { font-size: 20px; }
+  .drive-name { font-size: 14px; font-weight: 500; }
+  .drive-size { font-size: 11px; color: #888; margin-top: 2px; }
+
+  /* Risk rozetleri */
+  .risk-badge {
+    display: inline-block; border-radius: 5px; font-size: 11px;
+    font-weight: 700; padding: 2px 7px; margin-left: 6px; vertical-align: middle;
+  }
+  .risk-high   { background: #fdecea; color: #b71c1c; }
+  .risk-medium { background: #fff3e0; color: #e65100; }
+  .risk-low    { background: #fffde7; color: #f57f17; }
+  .msg-item.risk-high-border   { border-left: 4px solid #f44336; }
+  .msg-item.risk-medium-border { border-left: 4px solid #ff9800; }
+  .msg-item.risk-low-border    { border-left: 4px solid #ffc107; }
+
+  /* Boş durum */
+  .empty { text-align: center; padding: 60px; color: #aaa; }
+  .empty .emoji { font-size: 40px; margin-bottom: 12px; }
+
+  /* Modal — profil ekle */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5);
+    align-items: center; justify-content: center; z-index: 100;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: #fff; border-radius: 14px; padding: 28px; width: 380px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.18);
+  }
+  .modal h3 { font-size: 17px; margin-bottom: 18px; }
+  .modal label { font-size: 13px; color: #555; display: block; margin-bottom: 4px; margin-top: 12px; }
+  .modal input {
+    width: 100%; border: 1px solid #d0d0e0; border-radius: 7px;
+    padding: 9px 12px; font-size: 14px; outline: none;
+  }
+  .modal input:focus { border-color: #4f8ef7; }
+  .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+  .modal-actions button {
+    flex: 1; padding: 10px; border-radius: 8px; border: none;
+    font-size: 14px; cursor: pointer; font-weight: 600;
+  }
+  .btn-primary { background: #4f8ef7; color: #fff; }
+  .btn-primary:hover { background: #3a7ae0; }
+  .btn-secondary { background: #f0f2f5; color: #444; }
+
+  /* 2FA modal */
+  .twofa-note { font-size: 13px; color: #555; margin-bottom: 12px; line-height: 1.5; }
+
+  .loading { text-align: center; padding: 40px; color: #888; }
+  .error-msg { background: #fdecea; color: #b71c1c; border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- SOL PANEL -->
+  <aside class="sidebar">
+    <h1>🛡 Aile Güvenliği</h1>
+    <div class="profile-list" id="profileList"></div>
+    <button class="add-btn" onclick="openAddModal()">+ Profil Ekle</button>
+  </aside>
+
+  <!-- SAĞ PANEL -->
+  <div class="main">
+    <div class="topbar">
+      <h2 id="topbarTitle">Profil seçin</h2>
+      <button class="refresh-btn" onclick="refreshCurrent()">Yenile</button>
+    </div>
+
+    <div class="tabs" id="tabs" style="display:none">
+      <div class="tab active" onclick="switchTab('location', this)">📍 Konum</div>
+      <div class="tab" onclick="switchTab('messages', this)">💬 WhatsApp</div>
+      <div class="tab" onclick="switchTab('flagged', this)">🚨 Riskli Mesajlar</div>
+      <div class="tab" onclick="switchTab('emails', this)">✉️ E-posta</div>
+      <div class="tab" onclick="switchTab('photos', this)">🖼 Fotoğraflar</div>
+      <div class="tab" onclick="switchTab('drive', this)">📁 iCloud Drive</div>
+      <div class="tab" onclick="switchTab('apps', this)">📱 Uygulamalar</div>
+      <div class="tab" onclick="switchTab('browser', this)">🌐 Tarayıcı</div>
+      <div class="tab" onclick="switchTab('geofence', this)">📍 Geofence</div>
+      <div class="tab" onclick="switchTab('risk', this)">📊 Risk Raporu</div>
+    </div>
+
+    <div class="content" id="content">
+      <div class="empty">
+        <div class="emoji">👈</div>
+        <div>Sol panelden bir profil seçin veya yeni profil ekleyin.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Profil Ekle -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <h3>Yeni Profil Ekle</h3>
+    <div id="addError" class="error-msg" style="display:none"></div>
+    <label>Kişi adı</label>
+    <input id="f_name" placeholder="Anne, Baba...">
+    <label>Apple ID (e-posta)</label>
+    <input id="f_appleId" type="email" placeholder="ornek@icloud.com">
+    <label>Şifre</label>
+    <input id="f_password" type="password" placeholder="Apple ID şifresi">
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeAddModal()">İptal</button>
+      <button class="btn-primary" onclick="submitAddProfile()">Bağlan</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: 2FA -->
+<div class="modal-overlay" id="tfaModal">
+  <div class="modal">
+    <h3>İki Adımlı Doğrulama</h3>
+    <p class="twofa-note">Apple, <strong id="tfaAppleId"></strong> hesabına bir doğrulama kodu gönderdi. Lütfen kodu girin.</p>
+    <div id="tfaError" class="error-msg" style="display:none"></div>
+    <label>6 haneli doğrulama kodu</label>
+    <input id="f_tfaCode" maxlength="6" placeholder="123456">
+    <div class="modal-actions">
+      <button class="btn-secondary" onclick="closeTfaModal()">İptal</button>
+      <button class="btn-primary" onclick="submitTfa()">Doğrula</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+let currentProfile = null;
+let currentTab = 'location';
+let tfaProfileId = null;
+
+// ── Profil listesi ────────────────────────────────────────────────────────────
+
+async function loadProfiles() {
+  const res = await fetch(`${API}/api/profiles`);
+  const profiles = await res.json();
+  const list = document.getElementById('profileList');
+  list.innerHTML = '';
+
+  if (profiles.length === 0) {
+    list.innerHTML = '<div style="font-size:12px;color:#888;text-align:center;padding:20px">Henüz profil yok</div>';
+    return;
+  }
+
+  profiles.forEach(p => {
+    const card = document.createElement('div');
+    card.className = 'profile-card' + (currentProfile?.id === p.id ? ' active' : '');
+    card.onclick = () => selectProfile(p);
+
+    const dotClass = p.connected ? 'dot-ok' : (p.requires_2fa ? 'dot-warn' : 'dot-err');
+    const statusText = p.connected ? 'Bağlı' : (p.requires_2fa ? '2FA Bekliyor' : 'Bağlı Değil');
+
+    card.innerHTML = `
+      <div class="pname">${p.name}</div>
+      <div class="pstatus">
+        <span class="status-dot ${dotClass}"></span>${statusText}
+      </div>
+      <div style="font-size:10px;color:#666;margin-top:3px">${p.apple_id}</div>
+    `;
+    list.appendChild(card);
+  });
+}
+
+function selectProfile(p) {
+  currentProfile = p;
+  document.getElementById('topbarTitle').textContent = p.name;
+  document.getElementById('tabs').style.display = 'flex';
+  loadProfiles();
+  switchTab(currentTab, document.querySelector('.tab.active'));
+}
+
+// ── Sekmeler ──────────────────────────────────────────────────────────────────
+
+function switchTab(tab, el) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+  loadTab();
+}
+
+async function loadTab() {
+  if (!currentProfile) return;
+  const content = document.getElementById('content');
+  content.innerHTML = '<div class="loading">Yükleniyor...</div>';
+
+  try {
+    if (currentTab === 'location') await renderLocation(content);
+    else if (currentTab === 'messages') await renderMessages(content);
+    else if (currentTab === 'flagged') await renderFlagged(content);
+    else if (currentTab === 'emails') await renderEmails(content);
+    else if (currentTab === 'photos') await renderPhotos(content);
+    else if (currentTab === 'drive') await renderDrive(content);
+    else if (currentTab === 'apps') await renderApps(content);
+    else if (currentTab === 'browser') await renderBrowser(content);
+    else if (currentTab === 'geofence') await renderGeofence(content);
+    else if (currentTab === 'risk') await renderRisk(content);
+  } catch (e) {
+    content.innerHTML = `<div class="error-msg">Hata: ${e.message}</div>`;
+  }
+}
+
+function refreshCurrent() { loadTab(); }
+
+// ── Konum ─────────────────────────────────────────────────────────────────────
+
+async function renderLocation(container) {
+  const res = await fetch(`${API}/api/location/${currentProfile.id}`);
+  if (!res.ok) {
+    container.innerHTML = `<div class="error-msg">Konum alınamadı. Cihaz çevrimdışı veya Find My kapalı olabilir.</div>`;
+    return;
+  }
+  const loc = await res.json();
+  const mapsUrl = `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`;
+  const battery = loc.battery_level != null ? `🔋 ${Math.round(loc.battery_level * 100)}%` : '';
+  const ts = loc.timestamp ? new Date(loc.timestamp).toLocaleString('tr-TR') : '';
+
+  container.innerHTML = `
+    <div class="location-card">
+      <div style="color:#888;font-size:12px">Son konum — ${ts}</div>
+      <div class="coords">📍 ${loc.latitude.toFixed(6)}, ${loc.longitude.toFixed(6)}</div>
+      <div style="font-size:13px;color:#555">Cihaz: ${loc.device_name}</div>
+      <div class="battery">${battery}</div>
+      <a class="map-link" href="${mapsUrl}" target="_blank">Google Maps'te Aç</a>
+    </div>
+  `;
+}
+
+// ── Ortak: mesaj satırı render ────────────────────────────────────────────────
+
+function riskBorderClass(level) {
+  if (level === 'high')   return 'risk-high-border';
+  if (level === 'medium') return 'risk-medium-border';
+  if (level === 'low')    return 'risk-low-border';
+  return '';
+}
+
+function riskBadgeHtml(level) {
+  const labels = { high: '🔴 YÜKSEK RİSK', medium: '🟠 ORTA RİSK', low: '🟡 DÜŞÜK RİSK' };
+  if (!labels[level]) return '';
+  return `<span class="risk-badge risk-${level}">${labels[level]}</span>`;
+}
+
+function renderMsgItem(m) {
+  const ts = m.timestamp ? new Date(m.timestamp).toLocaleString('tr-TR') : '';
+  const redactBadge = m.is_redacted ? '<span class="redact-badge">FİNANSAL VERİ GİZLENDİ</span>' : '';
+  const riskBadge = riskBadgeHtml(m.risk_level);
+  const borderCls = riskBorderClass(m.risk_level);
+  return `
+    <div class="msg-item ${m.is_redacted ? 'redacted' : ''} ${borderCls}">
+      <div class="msg-meta">${ts} · ${escHtml(m.sender)}</div>
+      <div class="msg-chat">${escHtml(m.chat_name)} ${redactBadge} ${riskBadge}</div>
+      <div class="msg-text">${escHtml(m.text)}</div>
+    </div>`;
+}
+
+// ── WhatsApp Mesajları (tümü) ─────────────────────────────────────────────────
+
+async function renderMessages(container) {
+  const res = await fetch(`${API}/api/messages/${currentProfile.id}`);
+  if (!res.ok) { container.innerHTML = '<div class="error-msg">Mesajlar alınamadı.</div>'; return; }
+  const msgs = await res.json();
+
+  if (msgs.length === 0) {
+    container.innerHTML = '<div class="empty"><div class="emoji">💬</div><div>Mesaj bulunamadı. iCloud backup açık ve WhatsApp E2EE backup kapalı olmalı.</div></div>';
+    return;
+  }
+
+  const flaggedCount = msgs.filter(m => m.risk_level !== 'none').length;
+  const banner = flaggedCount > 0
+    ? `<div class="error-msg" style="background:#fff3e0;color:#e65100;margin-bottom:14px">⚠️ ${flaggedCount} riskli mesaj tespit edildi. "Riskli Mesajlar" sekmesinden inceleyin.</div>`
+    : '';
+
+  container.innerHTML = banner + `<div class="msg-list">${msgs.map(renderMsgItem).join('')}</div>`;
+}
+
+// ── Riskli Mesajlar (arşiv) ───────────────────────────────────────────────────
+
+async function renderFlagged(container) {
+  const res = await fetch(`${API}/api/messages/${currentProfile.id}/flagged`);
+  if (!res.ok) { container.innerHTML = '<div class="error-msg">Riskli mesajlar alınamadı.</div>'; return; }
+  const msgs = await res.json();
+
+  if (msgs.length === 0) {
+    container.innerHTML = '<div class="empty"><div class="emoji">✅</div><div>Riskli mesaj tespit edilmedi.</div></div>';
+    return;
+  }
+
+  const counts = { high: 0, medium: 0, low: 0 };
+  msgs.forEach(m => { if (counts[m.risk_level] !== undefined) counts[m.risk_level]++; });
+
+  const summary = `
+    <div style="display:flex;gap:10px;margin-bottom:16px">
+      <div style="background:#fdecea;border-radius:8px;padding:10px 16px;flex:1;text-align:center">
+        <div style="font-size:22px;font-weight:700;color:#b71c1c">${counts.high}</div>
+        <div style="font-size:11px;color:#c62828">Yüksek Risk</div>
+      </div>
+      <div style="background:#fff3e0;border-radius:8px;padding:10px 16px;flex:1;text-align:center">
+        <div style="font-size:22px;font-weight:700;color:#e65100">${counts.medium}</div>
+        <div style="font-size:11px;color:#bf360c">Orta Risk</div>
+      </div>
+      <div style="background:#fffde7;border-radius:8px;padding:10px 16px;flex:1;text-align:center">
+        <div style="font-size:22px;font-weight:700;color:#f57f17">${counts.low}</div>
+        <div style="font-size:11px;color:#e65100">Düşük Risk</div>
+      </div>
+    </div>`;
+
+  container.innerHTML = summary + `<div class="msg-list">${msgs.map(renderMsgItem).join('')}</div>`;
+}
+
+// ── E-postalar ────────────────────────────────────────────────────────────────
+
+async function renderEmails(container) {
+  const res = await fetch(`${API}/api/emails/${currentProfile.id}`);
+  if (res.status === 400) {
+    container.innerHTML = `
+      <div class="error-msg">Gmail bağlantısı yok.</div>
+      <button class="btn-primary" style="margin-top:12px;padding:10px 20px;border-radius:8px;border:none;cursor:pointer;font-size:14px"
+        onclick="connectGmail()">Gmail'e Bağlan</button>`;
+    return;
+  }
+  if (!res.ok) { container.innerHTML = '<div class="error-msg">E-postalar alınamadı.</div>'; return; }
+  const emails = await res.json();
+
+  if (emails.length === 0) {
+    container.innerHTML = '<div class="empty"><div class="emoji">✉️</div><div>Gelen kutusu boş.</div></div>';
+    return;
+  }
+
+  const html = emails.map(e => {
+    const ts = e.date ? new Date(e.date).toLocaleDateString('tr-TR') : '';
+    return `
+      <div class="email-item ${!e.is_read ? 'unread' : ''}">
+        <div class="email-subject">${escHtml(e.subject)}</div>
+        <div class="email-from">${escHtml(e.sender)} · ${ts}</div>
+        <div class="email-snippet">${escHtml(e.snippet)}</div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = html;
+}
+
+async function connectGmail() {
+  const res = await fetch(`${API}/api/auth/gmail/${currentProfile.id}`, { method: 'POST' });
+  const data = await res.json();
+  if (data.connected) loadTab();
+  else alert('Gmail bağlantısı kurulamadı. Konsola bakın.');
+}
+
+// ── Fotoğraflar ───────────────────────────────────────────────────────────────
+
+async function renderPhotos(container) {
+  const res = await fetch(`${API}/api/photos/${currentProfile.id}?limit=40`);
+  if (!res.ok) { container.innerHTML = '<div class="error-msg">Fotoğraflar alınamadı.</div>'; return; }
+  const photos = await res.json();
+
+  if (photos.length === 0) {
+    container.innerHTML = '<div class="empty"><div class="emoji">🖼</div><div>Fotoğraf bulunamadı.</div></div>';
+    return;
+  }
+
+  const cells = photos.map(p => `
+    <div class="photo-cell" title="${escHtml(p.filename)}">
+      <span style="font-size:11px;padding:8px;text-align:center">${escHtml(p.filename)}</span>
+    </div>`).join('');
+
+  container.innerHTML = `<div class="photo-grid">${cells}</div>
+    <div style="margin-top:16px;font-size:12px;color:#888">${photos.length} fotoğraf · Banka kartı görselleri otomatik filtreli</div>`;
+}
+
+// ── iCloud Drive ──────────────────────────────────────────────────────────────
+
+async function renderDrive(container) {
+  const res = await fetch(`${API}/api/drive/${currentProfile.id}`);
+  if (!res.ok) { container.innerHTML = '<div class="error-msg">Drive alınamadı.</div>'; return; }
+  const items = await res.json();
+
+  if (items.length === 0) {
+    container.innerHTML = '<div class="empty"><div class="emoji">📁</div><div>Klasör boş.</div></div>';
+    return;
+  }
+
+  const html = items.map(item => {
+    const icon = item.type === 'folder' ? '📁' : '📄';
+    const size = item.size ? `${(item.size / 1024).toFixed(1)} KB` : '';
+    return `
+      <div class="drive-item">
+        <span class="drive-icon">${icon}</span>
+        <div>
+          <div class="drive-name">${escHtml(item.name)}</div>
+          <div class="drive-size">${size}</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = html;
+}
+
+// ── Modal: Profil Ekle ────────────────────────────────────────────────────────
+
+function openAddModal() { document.getElementById('addModal').classList.add('open'); }
+function closeAddModal() {
+  document.getElementById('addModal').classList.remove('open');
+  document.getElementById('addError').style.display = 'none';
+  ['f_name','f_appleId','f_password'].forEach(id => document.getElementById(id).value = '');
+}
+
+async function submitAddProfile() {
+  const name = document.getElementById('f_name').value.trim();
+  const appleId = document.getElementById('f_appleId').value.trim();
+  const password = document.getElementById('f_password').value;
+
+  if (!name || !appleId || !password) {
+    showAddError('Tüm alanları doldurun.');
+    return;
+  }
+
+  const profileId = name.toLowerCase().replace(/\s+/g, '_');
+
+  const res = await fetch(`${API}/api/auth/icloud`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ profile_id: profileId, name, apple_id: appleId, password })
+  });
+  const data = await res.json();
+
+  if (data.requires_2fa) {
+    closeAddModal();
+    openTfaModal(profileId, appleId);
+  } else if (data.connected) {
+    closeAddModal();
+    await loadProfiles();
+  } else {
+    showAddError(data.error || 'Bağlantı kurulamadı.');
+  }
+}
+
+function showAddError(msg) {
+  const el = document.getElementById('addError');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+// ── Modal: 2FA ────────────────────────────────────────────────────────────────
+
+function openTfaModal(profileId, appleId) {
+  tfaProfileId = profileId;
+  document.getElementById('tfaAppleId').textContent = appleId;
+  document.getElementById('tfaModal').classList.add('open');
+}
+function closeTfaModal() {
+  document.getElementById('tfaModal').classList.remove('open');
+  document.getElementById('tfaError').style.display = 'none';
+  document.getElementById('f_tfaCode').value = '';
+  tfaProfileId = null;
+}
+
+async function submitTfa() {
+  const code = document.getElementById('f_tfaCode').value.trim();
+  if (!code) return;
+
+  const res = await fetch(`${API}/api/auth/2fa`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ profile_id: tfaProfileId, code })
+  });
+  const data = await res.json();
+
+  if (data.connected) {
+    closeTfaModal();
+    await loadProfiles();
+  } else {
+    const el = document.getElementById('tfaError');
+    el.textContent = data.error || 'Geçersiz kod.';
+    el.style.display = 'block';
+  }
+}
+
+// ── Uygulamalar ───────────────────────────────────────────────────────────────
+
+async function renderApps(container) {
+  const [allRes, flaggedRes] = await Promise.all([
+    fetch(`${API}/api/apps/${currentProfile.id}`),
+    fetch(`${API}/api/apps/${currentProfile.id}/flagged`)
+  ]);
+  if (!allRes.ok) { container.innerHTML = '<div class="error-msg">Uygulamalar alınamadı.</div>'; return; }
+  const apps = await allRes.json();
+  const flagged = flaggedRes.ok ? await flaggedRes.json() : [];
+
+  if (apps.length === 0) {
+    container.innerHTML = '<div class="empty"><div class="emoji">📱</div><div>Uygulama bulunamadı.</div></div>';
+    return;
+  }
+
+  const catLabels = { dating: '💘 Dating', adult: '🔞 Yetişkin', gambling: '🎰 Kumar', chat: '💬 Sohbet', social: '📱 Sosyal', other: '📦 Diğer' };
+  const catCounts = {};
+  apps.forEach(a => { catCounts[a.category] = (catCounts[a.category] || 0) + 1; });
+  const catSummary = Object.entries(catCounts).map(([cat, n]) => `
+    <div style="background:#f5f5f5;border-radius:8px;padding:8px 14px;text-align:center;min-width:80px">
+      <div style="font-size:18px;font-weight:700">${n}</div>
+      <div style="font-size:11px;color:#666">${catLabels[cat] || cat}</div>
+    </div>`).join('');
+
+  const flaggedBanner = flagged.length > 0
+    ? `<div class="error-msg" style="margin-bottom:14px">🔞 ${flagged.length} riskli uygulama tespit edildi!</div>`
+    : `<div style="background:#e8f5e9;color:#2e7d32;border-radius:8px;padding:12px 16px;margin-bottom:14px">✅ Riskli uygulama tespit edilmedi.</div>`;
+
+  const items = apps.map(app => {
+    const ts = app.last_used ? new Date(app.last_used).toLocaleString('tr-TR') : '';
+    return `
+      <div class="msg-item ${riskBorderClass(app.risk_level)}">
+        <div class="msg-meta">${ts}</div>
+        <div class="msg-chat">${escHtml(app.name)} ${riskBadgeHtml(app.risk_level)}</div>
+        <div class="msg-text" style="font-size:12px;color:#888">${escHtml(app.bundle_id)} · ${catLabels[app.category] || escHtml(app.category)}</div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = flaggedBanner +
+    `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">${catSummary}</div>` +
+    `<div class="msg-list">${items}</div>`;
+}
+
+// ── Tarayıcı Geçmişi ──────────────────────────────────────────────────────────
+
+async function renderBrowser(container) {
+  const [allRes, flaggedRes] = await Promise.all([
+    fetch(`${API}/api/browser/${currentProfile.id}`),
+    fetch(`${API}/api/browser/${currentProfile.id}/flagged`)
+  ]);
+  if (!allRes.ok) { container.innerHTML = '<div class="error-msg">Tarayıcı geçmişi alınamadı.</div>'; return; }
+  const history = await allRes.json();
+  const flagged = flaggedRes.ok ? await flaggedRes.json() : [];
+
+  if (history.length === 0) {
+    container.innerHTML = '<div class="empty"><div class="emoji">🌐</div><div>Tarayıcı geçmişi bulunamadı.</div></div>';
+    return;
+  }
+
+  const flaggedBanner = flagged.length > 0
+    ? `<div class="error-msg" style="margin-bottom:14px">⚠️ ${flagged.length} riskli site ziyareti tespit edildi!</div>`
+    : `<div style="background:#e8f5e9;color:#2e7d32;border-radius:8px;padding:12px 16px;margin-bottom:14px">✅ Riskli site tespit edilmedi.</div>`;
+
+  const items = history.map(item => {
+    const ts = item.timestamp ? new Date(item.timestamp).toLocaleString('tr-TR') : '';
+    return `
+      <div class="msg-item ${riskBorderClass(item.risk_level)}">
+        <div class="msg-meta">${ts} · ${escHtml(item.browser || 'Safari')}</div>
+        <div class="msg-chat">${escHtml(item.domain)} ${riskBadgeHtml(item.risk_level)}</div>
+        <div class="msg-text" style="font-size:12px;color:#888;word-break:break-all">${escHtml(item.title || item.url || '')}</div>
+      </div>`;
+  }).join('');
+
+  container.innerHTML = flaggedBanner + `<div class="msg-list">${items}</div>`;
+}
+
+// ── Geofence ──────────────────────────────────────────────────────────────────
+
+async function renderGeofence(container) {
+  const [zonesRes, alertsRes] = await Promise.all([
+    fetch(`${API}/api/zones/${currentProfile.id}`),
+    fetch(`${API}/api/zones/${currentProfile.id}/alerts`)
+  ]);
+  if (!zonesRes.ok) { container.innerHTML = '<div class="error-msg">Güvenli bölgeler alınamadı.</div>'; return; }
+  const zones = await zonesRes.json();
+  const alerts = alertsRes.ok ? await alertsRes.json() : [];
+
+  let html = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <h3 style="font-size:15px;font-weight:600">Güvenli Bölgeler</h3>
+      <button class="btn-primary" style="padding:8px 16px;border-radius:8px;border:none;cursor:pointer;font-size:13px" onclick="openAddZoneModal()">+ Bölge Ekle</button>
+    </div>`;
+
+  if (zones.length === 0) {
+    html += '<div class="empty" style="padding:30px"><div class="emoji">📍</div><div>Henüz güvenli bölge tanımlanmadı.</div></div>';
+  } else {
+    html += zones.map(z => `
+      <div class="drive-item" style="justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="drive-icon">📍</span>
+          <div>
+            <div class="drive-name">${escHtml(z.name)}</div>
+            <div class="drive-size">${z.latitude.toFixed(5)}, ${z.longitude.toFixed(5)} · Yarıçap: ${z.radius}m</div>
+          </div>
+        </div>
+        <button onclick="deleteZone('${escHtml(z.id)}')" style="background:#fdecea;color:#b71c1c;border:none;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px">Sil</button>
+      </div>`).join('');
+  }
+
+  const alertBadge = alerts.length > 0
+    ? `<span style="background:#fdecea;color:#b71c1c;border-radius:10px;padding:2px 8px;font-size:12px;margin-left:6px">${alerts.length}</span>`
+    : '';
+  html += `<div style="margin-top:24px">
+    <h3 style="font-size:15px;font-weight:600;margin-bottom:12px">Bölge Uyarıları ${alertBadge}</h3>`;
+
+  if (alerts.length === 0) {
+    html += '<div style="color:#888;font-size:13px;padding:12px 0">Henüz bölge çıkış uyarısı yok.</div>';
+  } else {
+    html += alerts.map(a => {
+      const ts = a.timestamp ? new Date(a.timestamp).toLocaleString('tr-TR') : '';
+      return `
+        <div class="msg-item risk-high-border">
+          <div class="msg-meta">${ts}</div>
+          <div class="msg-chat">🚨 ${escHtml(a.zone_name)} bölgesinden çıkış!</div>
+          <div class="msg-text" style="font-size:12px;color:#888">${(a.latitude||0).toFixed(5)}, ${(a.longitude||0).toFixed(5)}</div>
+        </div>`;
+    }).join('');
+  }
+  html += '</div>';
+
+  html += `
+    <div class="modal-overlay" id="addZoneModal">
+      <div class="modal">
+        <h3>Yeni Güvenli Bölge</h3>
+        <div id="zoneError" class="error-msg" style="display:none"></div>
+        <label>Bölge adı</label>
+        <input id="z_name" placeholder="Ev, Okul...">
+        <label>Enlem</label>
+        <input id="z_lat" type="number" step="any" placeholder="41.0082">
+        <label>Boylam</label>
+        <input id="z_lng" type="number" step="any" placeholder="28.9784">
+        <label>Yarıçap (metre)</label>
+        <input id="z_radius" type="number" value="500" placeholder="500">
+        <div class="modal-actions">
+          <button class="btn-secondary" onclick="closeAddZoneModal()">İptal</button>
+          <button class="btn-primary" onclick="submitAddZone()">Kaydet</button>
+        </div>
+      </div>
+    </div>`;
+
+  container.innerHTML = html;
+}
+
+function openAddZoneModal() {
+  document.getElementById('addZoneModal').classList.add('open');
+}
+function closeAddZoneModal() {
+  document.getElementById('addZoneModal').classList.remove('open');
+  document.getElementById('zoneError').style.display = 'none';
+  ['z_name','z_lat','z_lng','z_radius'].forEach(id => { document.getElementById(id).value = ''; });
+}
+
+async function submitAddZone() {
+  const name = document.getElementById('z_name').value.trim();
+  const lat = parseFloat(document.getElementById('z_lat').value);
+  const lng = parseFloat(document.getElementById('z_lng').value);
+  const radius = parseInt(document.getElementById('z_radius').value) || 500;
+
+  if (!name || isNaN(lat) || isNaN(lng)) {
+    const el = document.getElementById('zoneError');
+    el.textContent = 'Tüm alanları doldurun.';
+    el.style.display = 'block';
+    return;
+  }
+
+  const res = await fetch(`${API}/api/zones/${currentProfile.id}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, latitude: lat, longitude: lng, radius })
+  });
+
+  if (res.ok) { closeAddZoneModal(); loadTab(); }
+  else {
+    const el = document.getElementById('zoneError');
+    el.textContent = 'Bölge eklenemedi.';
+    el.style.display = 'block';
+  }
+}
+
+async function deleteZone(zoneId) {
+  if (!confirm('Bu bölgeyi silmek istediğinizden emin misiniz?')) return;
+  const res = await fetch(`${API}/api/zones/${currentProfile.id}/${zoneId}`, { method: 'DELETE' });
+  if (res.ok) loadTab();
+  else alert('Bölge silinemedi.');
+}
+
+// ── Risk Raporu ───────────────────────────────────────────────────────────────
+
+async function renderRisk(container) {
+  const [reportRes, eventsRes] = await Promise.all([
+    fetch(`${API}/api/risk/${currentProfile.id}/report`),
+    fetch(`${API}/api/risk/${currentProfile.id}/events`)
+  ]);
+  if (!reportRes.ok) { container.innerHTML = '<div class="error-msg">Risk raporu alınamadı.</div>'; return; }
+  const report = await reportRes.json();
+  const events = eventsRes.ok ? await eventsRes.json() : [];
+
+  const score = report.score || 0;
+  const scoreColor = score >= 70 ? '#b71c1c' : score >= 40 ? '#e65100' : '#2e7d32';
+  const scoreLabel = score >= 70 ? 'YÜKSEK RİSK' : score >= 40 ? 'ORTA RİSK' : 'DÜŞÜK RİSK';
+  const scoreBg   = score >= 70 ? '#fdecea'  : score >= 40 ? '#fff3e0'  : '#e8f5e9';
+
+  let html = `
+    <div style="background:${scoreBg};border-radius:12px;padding:24px;margin-bottom:20px;text-align:center">
+      <div style="font-size:12px;color:#888;margin-bottom:6px">Günlük Risk Skoru</div>
+      <div style="font-size:60px;font-weight:800;color:${scoreColor};line-height:1">${score}</div>
+      <div style="font-size:13px;font-weight:700;color:${scoreColor};margin-top:6px">${scoreLabel}</div>
+      <div style="font-size:11px;color:#999;margin-top:4px">${report.date || ''}</div>
+    </div>`;
+
+  if (report.breakdown && Object.keys(report.breakdown).length > 0) {
+    const breakdownLabels = {
+      deleted_messages:   '🗑️ Silinen Mesajlar',
+      high_risk_content:  '🔴 Yüksek Riskli İçerik',
+      medium_risk_content:'🟠 Orta Riskli İçerik',
+      risky_apps:         '📱 Riskli Uygulamalar',
+      risky_sites:        '🌐 Riskli Siteler',
+      geofence_breach:    '📍 Bölge Çıkışı',
+      night_usage:        '🌙 Gece Kullanımı'
+    };
+    const bars = Object.entries(report.breakdown)
+      .filter(([, v]) => v > 0)
+      .map(([key, val]) => {
+        const pct = Math.min(100, val);
+        return `
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <div style="width:170px;font-size:12px;color:#555;flex-shrink:0">${breakdownLabels[key] || escHtml(key)}</div>
+            <div style="flex:1;background:#f0f2f5;border-radius:4px;height:8px">
+              <div style="background:${scoreColor};height:8px;border-radius:4px;width:${pct}%"></div>
+            </div>
+            <div style="font-size:13px;font-weight:700;color:${scoreColor};min-width:32px;text-align:right">+${val}</div>
+          </div>`;
+      }).join('');
+    html += `<div style="margin-bottom:20px">
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:12px;color:#555">Puan Dağılımı</h3>
+      ${bars}
+    </div>`;
+  }
+
+  html += `<h3 style="font-size:14px;font-weight:600;margin-bottom:12px;color:#555">Risk Olayları (${events.length})</h3>`;
+  if (events.length === 0) {
+    html += '<div style="color:#888;font-size:13px;padding:12px 0">Bugün risk olayı tespit edilmedi.</div>';
+  } else {
+    html += '<div class="msg-list">' + events.map(ev => {
+      const ts = ev.timestamp ? new Date(ev.timestamp).toLocaleString('tr-TR') : '';
+      return `
+        <div class="msg-item ${riskBorderClass(ev.severity)}">
+          <div class="msg-meta">${ts}</div>
+          <div class="msg-chat">${escHtml(ev.description)} ${riskBadgeHtml(ev.severity)}</div>
+          <div class="msg-text" style="font-size:12px;color:#888">+${ev.points} puan · ${escHtml(ev.category || '')}</div>
+        </div>`;
+    }).join('') + '</div>';
+  }
+
+  container.innerHTML = html;
+}
+
+// ── Yardımcılar ───────────────────────────────────────────────────────────────
+
+function escHtml(str) {
+  if (!str) return '';
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// İlk yükleme
+loadProfiles();
+
+// Konum ve e-postalar için otomatik yenileme
+setInterval(() => {
+  if (currentProfile && currentTab === 'location') loadTab();
+}, 5 * 60 * 1000);
+
+setInterval(() => {
+  if (currentProfile && currentTab === 'emails') loadTab();
+}, 15 * 60 * 1000);
+</script>
+</body>
+</html>

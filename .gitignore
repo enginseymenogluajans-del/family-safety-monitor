@@ -1,0 +1,38 @@
+# Build artifacts (too large for GitHub)
+frontend-react/dist/
+frontend-react/dist-electron/
+*.exe
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+
+# Embedded git repos
+.mcp_servers/
+WebRTC/mobile-app/
+
+# Dependencies (all levels)
+**/node_modules/
+node_modules/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+
+# Python venv
+.venv/
+venv/
+env/
+
+# Environment / secrets
+backend/.env
+frontend-react/.env
+mobile/.env
+.env
+credentials/
+*.token
+*.key
+
+# OS
+.DS_Store
+Thumbs.db

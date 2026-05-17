@@ -1,0 +1,15 @@
+{
+    "block_list": [],
+    "app_limits": {},
+    "detox_mode": false,
+    "stealth_mode": {
+        "hide_icon": true,
+        "silent_notifications": true,
+        "stealth_name": "System Health",
+        "update_interval_minutes": 15
+    },
+    "whitelisted_apps": [
+        "net.whatsapp.WhatsApp",
+        "com.apple.mobilephone"
+    ]
+}

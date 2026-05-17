@@ -1,0 +1,68 @@
+# ── Build artifacts ──────────────────────────────────────────────────────────
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+frontend-react/dist/
+frontend-react/dist-electron/
+
+# ── Lock files ────────────────────────────────────────────────────────────────
+package-lock.json
+pip-lock.txt
+
+# ── Binary / media assets ─────────────────────────────────────────────────────
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.ico
+*.gif
+*.pdf
+*.webm
+
+# ── Runtime data ──────────────────────────────────────────────────────────────
+*.db
+credentials/
+whatsapp-agent/data/
+backend/data/
+
+# ── Secrets & env ─────────────────────────────────────────────────────────────
+.env
+.env.*
+*.env
+
+# ── Third-party / unrelated sub-projects ─────────────────────────────────────
+.mcp_servers/
+WebRTC/mobile-app/
+.wwebjs_auth/
+.wwebjs_cache/
+
+# ── Legacy frontend (replaced by frontend-react) ─────────────────────────────
+frontend/
+
+# ── Documentation & presentation files ───────────────────────────────────────
+README.md
+frontend-react/README.md
+presentation.md
+WEBRTC_SAFETY_GUIDELINES.md
+context.md
+
+# ── Lint / CI artefacts ───────────────────────────────────────────────────────
+frontend-react/lint_results.json
+frontend-react/eslint.config.js
+.gitignore
+.gitattributes
+
+# ── Trivial boilerplate (tiny, never needs editing) ───────────────────────────
+frontend-react/src/main.jsx
+frontend-react/src/App.css
+frontend-react/src/index.css
+frontend-react/index.html
+frontend-react/public/
+frontend-react/electron/preload.js
+frontend-react/electron/package.json
+backend/services/__init__.py
+
+# ── Scripts (run once, not code) ──────────────────────────────────────────────
+run.sh
+run_windows.ps1

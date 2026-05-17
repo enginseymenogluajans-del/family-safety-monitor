@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx expo *)",
+      "Bash(python -c ':*)",
+      "Bash(curl -s -H \"X-API-Key: suCi7-_40F_ca1kmd62hsddmBR1fGvorOEPXKxWQJNM\" \"http://127.0.0.1:8000/api/calls/default\")",
+      "Bash(curl -s -H \"X-API-Key: suCi7-_40F_ca1kmd62hsddmBR1fGvorOEPXKxWQJNM\" \"http://127.0.0.1:8000/api/apps/default\")",
+      "Bash(curl -s -H \"X-API-Key: suCi7-_40F_ca1kmd62hsddmBR1fGvorOEPXKxWQJNM\" \"http://127.0.0.1:8000/api/browser/default\")",
+      "Bash(python -c \"import main\")",
+      "Bash(.venv/Scripts/pip list:*)",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); e=d['expo']['extra']; print\\('BACKEND_URL:', e.get\\('BACKEND_URL','MISSING'\\)\\); print\\('API_KEY:', 'SET' if e.get\\('API_KEY'\\) else 'MISSING'\\); print\\('EAS projectId:', e.get\\('eas',{}\\).get\\('projectId','MISSING'\\)\\); print\\('iOS bundleId:', d['expo']['ios'].get\\('bundleIdentifier','MISSING'\\)\\)\")",
+      "Bash(ipconfig)",
+      "Bash(findstr \"IPv4\")",
+      "Read(//c/Users/engin/Desktop/ŞİRKET PROJEM/ENGİN OFİS/claude-marketing-skills/**)",
+      "Bash(npm --version)"
+    ]
+  }
+}
