@@ -47,13 +47,12 @@ def connect(profile_id: str, apple_id: str, password: str) -> ProfileStatus:
     else:
         print(f"[iCLOUD] Trust token yok — tam kimlik doğrulama başlatılıyor.")
 
-    delays = [30, 60, 120]
+    retry_delays = [30, 60]  # sleep between retries only, not before first attempt
     last_error = ""
-    for attempt, delay in enumerate(delays, 1):
+    for attempt in range(3):
         _orig_ua = requests.utils.default_user_agent
         requests.utils.default_user_agent = lambda *_: _BROWSER_UA
         try:
-            time.sleep(delay)
             api = PyiCloudService(apple_id, password, cookie_directory=cookie_dir)
             _sessions[profile_id] = api
             if api.requires_2fa:
@@ -66,9 +65,9 @@ def connect(profile_id: str, apple_id: str, password: str) -> ProfileStatus:
             return ProfileStatus(profile_id=profile_id, connected=False, requires_2fa=False, error=f"Giriş başarısız: {e}")
         except PyiCloudAPIResponseException as e:
             last_error = str(e)
-            print(f"[iCLOUD 503] Deneme {attempt}/3 — {last_error}")
-            if attempt == len(delays):
-                break
+            print(f"[iCLOUD 503] Deneme {attempt + 1}/3 — {last_error}")
+            if attempt < len(retry_delays):
+                time.sleep(retry_delays[attempt])
         except Exception as e:
             print(f"[iCLOUD ERROR] apple_id={apple_id}")
             traceback.print_exc()

@@ -325,7 +325,7 @@ async def list_profiles():
 @app.post("/api/auth/icloud", response_model=ProfileStatus)
 async def add_icloud_profile(req: AddProfileRequest):
     pwd = req.password.get_secret_value()
-    status = icloud_service.connect(req.profile_id, req.apple_id, pwd)
+    status = await asyncio.to_thread(icloud_service.connect, req.profile_id, req.apple_id, pwd)
     _profiles[req.profile_id] = Profile(
         id=req.profile_id, name=req.name, apple_id=req.apple_id,
         connected=status.connected, requires_2fa=status.requires_2fa
