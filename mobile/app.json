@@ -30,9 +30,9 @@
       },
       "package": "com.enginseymen.mobile"
     },
-    "plugins": [],
+    "plugins": ["expo-asset"],
     "extra": {
-      "BACKEND_URL": "http://192.168.1.175:8000",
+      "BACKEND_URL": "http://192.168.1.138:8000",
       "API_KEY": "suCi7-_40F_ca1kmd62hsddmBR1fGvorOEPXKxWQJNM",
       "eas": {
         "projectId": "4959a902-dce3-4844-b625-e1fb89cbbbf3"

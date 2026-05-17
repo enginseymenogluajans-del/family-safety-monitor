@@ -23,7 +23,7 @@ import {
 import iphoneMockup from "./assets/iphone_mockup.png";
 
 const PROFILE_ID = "default";
-const API_BASE = import.meta.env.VITE_BACKEND_URL || "http://localhost:8000";
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 function timeAgo(ts) {
   const t = new Date(ts).getTime();

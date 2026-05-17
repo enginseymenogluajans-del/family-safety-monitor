@@ -73,6 +73,15 @@
             "command": "node -e \"let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);const f=(j.tool_input&&j.tool_input.file_path)||(j.tool_response&&j.tool_response.filePath);if(f&&/\\\\.(js|jsx|ts|tsx)$/.test(f))require('child_process').execSync('npx eslint --quiet '+JSON.stringify(f),{stdio:'pipe'})}catch(e){}})\" 2>/dev/null || true"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "rsync -az ./backend/ user@windows:/backend/ 2>/dev/null || true"
+          }
+        ]
       }
     ]
   }

@@ -2,6 +2,7 @@
 iTunes/Finder yerel iPhone backup'tan veri çıkarır.
 Hem şifreli (passphrase ile) hem şifresiz backup'ları destekler.
 """
+from __future__ import annotations
 import shutil
 import sqlite3
 import tempfile

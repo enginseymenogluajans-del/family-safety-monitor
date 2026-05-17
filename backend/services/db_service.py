@@ -3,6 +3,7 @@ Kalıcı SQLite depolama servisi.
 Konum geçmişi, mesajlar, AI alarmları ve risk olaylarını saklar.
 DB dosyası: backend/data/family_safety.db
 """
+from __future__ import annotations
 import json
 import sqlite3
 from datetime import datetime

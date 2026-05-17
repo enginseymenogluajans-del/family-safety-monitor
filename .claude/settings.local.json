@@ -12,7 +12,8 @@
       "Bash(ipconfig)",
       "Bash(findstr \"IPv4\")",
       "Read(//c/Users/engin/Desktop/ŞİRKET PROJEM/ENGİN OFİS/claude-marketing-skills/**)",
-      "Bash(npm --version)"
+      "Bash(npm --version)",
+      "Bash(open /Users/enginseymenoglu/Desktop/family-safety-monitor/mobile/ios/mobile.xcworkspace)"
     ]
   }
 }

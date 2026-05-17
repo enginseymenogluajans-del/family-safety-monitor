@@ -1,6 +1,6 @@
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
-pyicloud==2.5.0
+pyicloud==2.0.1
 google-api-python-client==2.140.0
 google-auth-httplib2==0.2.0
 google-auth-oauthlib==1.2.1
@@ -10,9 +10,10 @@ httpx==0.27.2
 python-multipart==0.0.9
 geopy==2.4.1
 iphone-backup-decrypt==0.9.0
-whatsapp-chat-exporter==0.13.0
+whatsapp-chat-exporter==0.12.1
 reportlab==4.2.5
 
 python-socketio
 aiofiles
 python-multipart
+eval_type_backport

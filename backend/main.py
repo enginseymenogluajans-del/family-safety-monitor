@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 import asyncio
 from datetime import datetime, timedelta, timezone
@@ -24,7 +25,7 @@ from services.models import (
     LocalBackupRequest, LocationData,
 )
 
-load_dotenv()
+load_dotenv(Path(__file__).parent / ".env")
 
 # ── API Kimlik Doğrulama ─────────────────────────────────────────────────────
 
@@ -202,6 +203,14 @@ async def startup_event():
                     print(f"[WARN] Yerel backup bağlanamadı ({p.name}): {result.get('error','?')}")
             except Exception as exc:
                 print(f"[WARN] Yerel backup yeniden bağlanamadı ({p.name}): {exc}")
+
+    # First-run: seed a default profile so endpoints don't return 404
+    if not _profiles:
+        default = Profile(id="default", name="iPhone", apple_id="", has_gmail=False,
+                          connected=False, requires_2fa=False, daily_risk_score=0)
+        _profiles["default"] = default
+        db_service.save_profile(default)
+        print("[OK] İlk çalıştırma: varsayılan profil oluşturuldu.")
 
     print(f"[OK] {len(_profiles)} profil yuklendi.")
 

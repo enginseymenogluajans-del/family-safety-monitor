@@ -1,5 +1,17 @@
 # Aile Güvenliği Paneli
 
+## Environment Context
+
+- Backend runs on Windows machine; frontend/iOS development happens on Mac
+- When debugging auth/API issues, FIRST verify which machine is running each service
+- File edits on Mac do NOT automatically reach the Windows backend - confirm sync or deployment before re-testing
+
+## Debugging Checklist
+
+- For 401/auth errors: check env vars and API keys on BOTH client and server machines
+- For 'missing endpoint' errors: verify the endpoint isn't failing due to empty data stores (e.g., no default profile) before assuming it's unimplemented
+- Python backend targets 3.9 — avoid 3.10+ syntax (match statements, X | Y unions in type hints)
+
 ## Session State Management
 
 - Do not re-read or re-scan files that have already been processed in this session. Use MEMORY.md or TodoWrite to track completed work and remaining tasks.
