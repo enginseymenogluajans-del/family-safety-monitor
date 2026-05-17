@@ -1,0 +1,1726 @@
+import { useState, useEffect, useCallback } from "react";
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  RefreshControl,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  Switch,
+  Alert,
+} from "react-native";
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Notifications from "expo-notifications";
+import Constants from "expo-constants";
+import * as Linking from "expo-linking";
+import { StatusBar } from "expo-status-bar";
+
+const BACKEND =
+  (Constants.expoConfig?.extra?.BACKEND_URL as string) ??
+  "https://slides-east-euro-sounds.trycloudflare.com";
+const API_KEY = (Constants.expoConfig?.extra?.API_KEY as string) ?? "";
+const SETUP_KEY = "@fsm_setup_done";
+
+function apiFetch(url: string, opts: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(opts.headers as HeadersInit | undefined);
+  if (API_KEY) headers.set("X-API-Key", API_KEY);
+  return fetch(url, { ...opts, headers });
+}
+
+const DEFAULT_CFG: NotifConfig = {
+  email: "",
+  notify_on_score_above: 50,
+  notify_on_deleted_message: true,
+  notify_on_geofence_exit: true,
+  notify_on_risky_app: true,
+  night_mode_start: "23:00",
+  night_mode_end: "07:00",
+};
+
+// ─── Push Notifications ───────────────────────────────────────────────────────
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
+async function registerPushToken() {
+  try {
+    const { status: existing } = await Notifications.getPermissionsAsync();
+    const { status } =
+      existing === "granted"
+        ? { status: existing }
+        : await Notifications.requestPermissionsAsync();
+    if (status !== "granted") {
+      console.log("[Push] İzin reddedildi");
+      return;
+    }
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId as
+      | string
+      | undefined;
+    if (!projectId) {
+      console.warn(
+        "[Push] app.json içinde EAS projectId bulunamadı — token kaydı atlandı",
+      );
+      return;
+    }
+    const { data: token } = await Notifications.getExpoPushTokenAsync({
+      projectId,
+    });
+    console.log("[Push] Token alındı:", token);
+
+    const profiles: { id: string }[] = await apiFetch(`${BACKEND}/api/profiles`)
+      .then((r) => (r.ok ? r.json() : []))
+      .catch(() => []);
+    await Promise.all(
+      profiles.map((p) =>
+        apiFetch(`${BACKEND}/api/profiles/${p.id}/push-token`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+        }).catch(() => {}),
+      ),
+    );
+    console.log(`[Push] Token ${profiles.length} profile için kaydedildi`);
+  } catch (e: any) {
+    console.warn("[Push] Kayıt hatası:", e.message);
+  }
+}
+
+function ToggleRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <View style={[g.settingRow, { justifyContent: "space-between" }]}>
+      <Text style={g.settingLabel}>{label}</Text>
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        trackColor={{ false: C.border, true: C.primary + "88" }}
+        thumbColor={value ? C.primary : C.muted}
+      />
+    </View>
+  );
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type Profile = { id: string; name: string };
+
+type FlaggedMessage = {
+  profile_id: string;
+  chat_name: string;
+  sender: string;
+  text: string | null;
+  timestamp: string;
+  is_redacted: boolean;
+  risk_level: string;
+  risk_categories: string[];
+  is_deleted: boolean;
+  has_media: boolean;
+  is_from_me: boolean;
+  risk_score: number;
+};
+
+type LocationData = {
+  latitude?: number;
+  longitude?: number;
+  address?: string;
+  timestamp?: string;
+  in_safe_zone?: boolean;
+  zone_name?: string;
+};
+
+type RiskReport = { score?: number; level?: string };
+
+type NotifConfig = {
+  email: string;
+  notify_on_score_above: number;
+  notify_on_deleted_message: boolean;
+  notify_on_geofence_exit: boolean;
+  notify_on_risky_app: boolean;
+  night_mode_start: string;
+  night_mode_end: string;
+};
+
+type SafeZone = {
+  zone_id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radius_meters: number;
+  active: boolean;
+};
+
+type MemberCard = Profile & {
+  location: LocationData | null;
+  risk: RiskReport | null;
+  locationLoading: boolean;
+};
+
+// ─── Theme ────────────────────────────────────────────────────────────────────
+
+const C = {
+  bg: "#09090b",
+  surface: "#18181b",
+  border: "#27272a",
+  primary: "#00a2ff",
+  text: "#e4e4e7",
+  muted: "#71717a",
+  green: "#22c55e",
+  amber: "#f59e0b",
+  red: "#ef4444",
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const AVATAR_COLORS = ["#7c3aed", "#0891b2", "#15803d", "#b45309", "#be123c"];
+
+function avatarColor(name: string) {
+  let h = 0;
+  for (let i = 0; i < name.length; i++)
+    h = (h * 31 + name.charCodeAt(i)) & 0xfffff;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+
+function initials(name: string) {
+  return name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
+function riskColor(level?: string | null) {
+  if (level === "critical" || level === "high") return C.red;
+  if (level === "medium") return C.amber;
+  if (level === "low") return C.green;
+  return C.muted;
+}
+
+function riskLabel(level?: string | null) {
+  const map: Record<string, string> = {
+    none: "Güvenli",
+    low: "Düşük",
+    medium: "Orta",
+    high: "Yüksek",
+    critical: "Kritik",
+  };
+  return map[level ?? "none"] ?? "Bilinmiyor";
+}
+
+function timeAgo(ts?: string | null) {
+  if (!ts) return "—";
+  const diff = Date.now() - new Date(ts).getTime();
+  if (isNaN(diff)) return "—";
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "Az önce";
+  if (m < 60) return `${m}dk önce`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}sa önce`;
+  return `${Math.floor(h / 24)}g önce`;
+}
+
+// ─── Profile Create Screen ────────────────────────────────────────────────────
+
+function ProfileCreateScreen({ onComplete }: { onComplete: () => void }) {
+  const insets = useSafeAreaInsets();
+  const [name, setName] = useState("");
+  const [appleId, setAppleId] = useState("");
+  const [password, setPassword] = useState("");
+  const [code2fa, setCode2fa] = useState("");
+  const [profileId, setProfileId] = useState("");
+  const [step, setStep] = useState<"form" | "2fa">("form");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleConnect = async () => {
+    if (!name.trim() || !appleId.trim() || !password.trim()) {
+      setError("Tüm alanları doldurun.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    const pid = appleId.trim().toLowerCase().replace(/[@.+]/g, "_");
+    try {
+      const res = await apiFetch(`${BACKEND}/api/auth/icloud`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profile_id: pid,
+          name: name.trim(),
+          apple_id: appleId.trim(),
+          password,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail ?? `HTTP ${res.status}`);
+      setProfileId(pid);
+      if (data.requires_2fa) {
+        setStep("2fa");
+      } else {
+        await AsyncStorage.setItem(SETUP_KEY, "true");
+        onComplete();
+      }
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handle2FA = async () => {
+    if (!code2fa.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await apiFetch(`${BACKEND}/api/auth/2fa`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile_id: profileId, code: code2fa.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail ?? `HTTP ${res.status}`);
+      await AsyncStorage.setItem(SETUP_KEY, "true");
+      onComplete();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: C.bg }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <ScrollView
+        contentContainerStyle={[
+          f.sheet,
+          { paddingTop: insets.top + 32, paddingBottom: 40 },
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <Text style={f.heading}>👨‍👩‍👧 Aile Güvenliği</Text>
+        <Text style={f.sub}>
+          {step === "form"
+            ? "İzlenen kişinin iCloud hesabını ekleyin"
+            : "İki faktörlü doğrulama kodu"}
+        </Text>
+
+        {step === "form" ? (
+          <>
+            <Text style={f.label}>İSİM</Text>
+            <TextInput
+              style={f.input}
+              value={name}
+              onChangeText={setName}
+              placeholder="Ayşe"
+              placeholderTextColor={C.muted}
+              autoCapitalize="words"
+            />
+
+            <Text style={f.label}>ICLOUD E-POSTA</Text>
+            <TextInput
+              style={f.input}
+              value={appleId}
+              onChangeText={setAppleId}
+              placeholder="ornek@icloud.com"
+              placeholderTextColor={C.muted}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+
+            <Text style={f.label}>ICLOUD ŞİFRESİ</Text>
+            <TextInput
+              style={f.input}
+              value={password}
+              onChangeText={setPassword}
+              placeholder="••••••••"
+              placeholderTextColor={C.muted}
+              secureTextEntry
+              autoCapitalize="none"
+            />
+
+            {error && <Text style={f.error}>{error}</Text>}
+
+            <TouchableOpacity
+              style={[f.btn, loading && f.btnDisabled]}
+              onPress={handleConnect}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={f.btnText}>Bağlan</Text>
+              )}
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            <Text style={[f.sub, { marginBottom: 24 }]}>
+              Apple cihazına gelen 6 haneli kodu girin.
+            </Text>
+            <Text style={f.label}>DOĞRULAMA KODU</Text>
+            <TextInput
+              style={[
+                f.input,
+                { letterSpacing: 8, textAlign: "center", fontSize: 22 },
+              ]}
+              value={code2fa}
+              onChangeText={setCode2fa}
+              placeholder="000000"
+              placeholderTextColor={C.muted}
+              keyboardType="number-pad"
+              maxLength={6}
+            />
+
+            {error && <Text style={f.error}>{error}</Text>}
+
+            <TouchableOpacity
+              style={[f.btn, loading && f.btnDisabled]}
+              onPress={handle2FA}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={f.btnText}>Doğrula</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={f.back}
+              onPress={() => {
+                setStep("form");
+                setError(null);
+              }}
+            >
+              <Text style={[s.muted, { textAlign: "center" }]}>← Geri dön</Text>
+            </TouchableOpacity>
+          </>
+        )}
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+// ─── Dashboard Screen ─────────────────────────────────────────────────────────
+
+function DashboardScreen() {
+  const [cards, setCards] = useState<MemberCard[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async (isRefresh = false) => {
+    try {
+      if (!isRefresh) setLoading(true);
+      setError(null);
+
+      const res = await apiFetch(`${BACKEND}/api/profiles`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const profiles: Profile[] = await res.json();
+
+      setCards(
+        profiles.map((p) => ({
+          ...p,
+          location: null,
+          risk: null,
+          locationLoading: true,
+        })),
+      );
+      setLoading(false);
+
+      profiles.forEach(async (p) => {
+        const [locRes, riskRes] = await Promise.allSettled([
+          apiFetch(`${BACKEND}/api/location/${p.id}`).then((r) =>
+            r.ok ? r.json() : null,
+          ),
+          apiFetch(`${BACKEND}/api/risk/${p.id}/report`).then((r) =>
+            r.ok ? r.json() : null,
+          ),
+        ]);
+        setCards((prev) =>
+          prev.map((c) =>
+            c.id === p.id
+              ? {
+                  ...c,
+                  location: locRes.status === "fulfilled" ? locRes.value : null,
+                  risk: riskRes.status === "fulfilled" ? riskRes.value : null,
+                  locationLoading: false,
+                }
+              : c,
+          ),
+        );
+      });
+    } catch (e: any) {
+      setError(e.message);
+      setLoading(false);
+    } finally {
+      if (isRefresh) setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    load(true);
+  }, [load]);
+
+  if (loading) {
+    return (
+      <View style={s.center}>
+        <ActivityIndicator color={C.primary} size="large" />
+        <Text style={[s.muted, { marginTop: 12 }]}>
+          Backend'e bağlanılıyor…
+        </Text>
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={s.center}>
+        <Text style={{ fontSize: 32, marginBottom: 12 }}>⚠️</Text>
+        <Text style={[s.muted, { textAlign: "center", paddingHorizontal: 40 }]}>
+          Backend erişilemiyor{"\n"}
+          {BACKEND}
+        </Text>
+        <TouchableOpacity style={s.retryBtn} onPress={() => load()}>
+          <Text style={{ color: C.primary, fontWeight: "700" }}>
+            Tekrar Dene
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (cards.length === 0) {
+    return (
+      <View style={s.center}>
+        <Text style={s.muted}>Henüz profil yok.</Text>
+      </View>
+    );
+  }
+
+  const scores = cards.map((c) => c.risk?.score ?? 0);
+  const avgRisk = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+  const safeCnt = cards.filter(
+    (c) => !c.locationLoading && c.location?.in_safe_zone !== false,
+  ).length;
+
+  return (
+    <ScrollView
+      style={{ flex: 1, backgroundColor: C.bg }}
+      contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={C.primary}
+        />
+      }
+    >
+      {/* Summary strip */}
+      <View style={s.summaryStrip}>
+        <View style={s.summaryItem}>
+          <Text style={s.summaryNum}>{cards.length}</Text>
+          <Text style={s.summaryLabel}>Üye</Text>
+        </View>
+        <View style={s.summaryDivider} />
+        <View style={s.summaryItem}>
+          <Text
+            style={[
+              s.summaryNum,
+              {
+                color: riskColor(
+                  avgRisk >= 60 ? "high" : avgRisk >= 30 ? "medium" : "low",
+                ),
+              },
+            ]}
+          >
+            {avgRisk}
+          </Text>
+          <Text style={s.summaryLabel}>Ort. Risk</Text>
+        </View>
+        <View style={s.summaryDivider} />
+        <View style={s.summaryItem}>
+          <Text style={[s.summaryNum, { color: C.green }]}>{safeCnt}</Text>
+          <Text style={s.summaryLabel}>Güvenli Bölge</Text>
+        </View>
+      </View>
+
+      <Text style={s.sectionTitle}>AİLE ÜYELERİ</Text>
+
+      {cards.map((card) => {
+        const lvl = card.risk?.level;
+        const score = card.risk?.score ?? 0;
+        const color = riskColor(lvl);
+
+        return (
+          <View key={card.id} style={s.card}>
+            {/* Card header */}
+            <View style={s.cardHeader}>
+              <View
+                style={[s.avatar, { backgroundColor: avatarColor(card.name) }]}
+              >
+                <Text style={s.avatarText}>{initials(card.name)}</Text>
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <Text style={s.cardName}>{card.name}</Text>
+                <View style={s.row}>
+                  <View style={[s.dot, { backgroundColor: color }]} />
+                  <Text style={[s.cardSub, { color }]}>{riskLabel(lvl)}</Text>
+                </View>
+              </View>
+
+              <View
+                style={[
+                  s.scoreBadge,
+                  { backgroundColor: color + "22", borderColor: color + "55" },
+                ]}
+              >
+                <Text style={[s.scoreNum, { color }]}>{score}</Text>
+                <Text style={[s.scoreLabel, { color }]}>puan</Text>
+              </View>
+            </View>
+
+            {/* Location strip */}
+            <View style={s.locStrip}>
+              {card.locationLoading ? (
+                <ActivityIndicator size="small" color={C.muted} />
+              ) : card.location ? (
+                <>
+                  <Text style={{ fontSize: 15 }}>📍</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.locText} numberOfLines={1}>
+                      {card.location.address ??
+                        `${card.location.latitude?.toFixed(4)}, ${card.location.longitude?.toFixed(4)}`}
+                    </Text>
+                    {card.location.in_safe_zone != null && (
+                      <Text
+                        style={[
+                          s.zoneBadge,
+                          {
+                            color: card.location.in_safe_zone ? C.green : C.red,
+                          },
+                        ]}
+                      >
+                        {card.location.in_safe_zone
+                          ? "✓ Güvenli Bölge"
+                          : "⚠ Bölge Dışı"}
+                        {card.location.zone_name
+                          ? ` · ${card.location.zone_name}`
+                          : ""}
+                      </Text>
+                    )}
+                  </View>
+                  <Text style={s.timeAgo}>
+                    {timeAgo(card.location.timestamp)}
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={{ fontSize: 15 }}>📍</Text>
+                  <Text style={s.muted}>Konum verisi yok</Text>
+                </>
+              )}
+            </View>
+          </View>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
+// ─── Placeholder Screens ──────────────────────────────────────────────────────
+
+function MessagesScreen() {
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<FlaggedMessage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    apiFetch(`${BACKEND}/api/profiles`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(`HTTP ${r.status}`)))
+      .then((data: Profile[]) => {
+        setProfiles(data);
+        if (data.length) setActiveId(data[0].id);
+        else setLoading(false);
+      })
+      .catch((e) => {
+        setError(String(e));
+        setLoading(false);
+      });
+  }, []);
+
+  const loadMessages = useCallback(async (id: string, isRefresh = false) => {
+    if (!isRefresh) setLoading(true);
+    setError(null);
+    try {
+      const res = await apiFetch(
+        `${BACKEND}/api/messages/${id}/flagged?limit=100`,
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setMessages(await res.json());
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+      if (isRefresh) setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeId) loadMessages(activeId);
+  }, [activeId, loadMessages]);
+
+  const onRefresh = useCallback(() => {
+    if (activeId) {
+      setRefreshing(true);
+      loadMessages(activeId, true);
+    }
+  }, [activeId, loadMessages]);
+
+  function fmtTs(ts: string) {
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return "—";
+    return (
+      d.toLocaleDateString("tr-TR", { day: "numeric", month: "short" }) +
+      " " +
+      d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })
+    );
+  }
+
+  return (
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
+      {/* Profile picker — only shown when multiple profiles exist */}
+      {profiles.length > 1 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{
+            flexGrow: 0,
+            borderBottomWidth: 1,
+            borderBottomColor: C.border,
+          }}
+          contentContainerStyle={{ padding: 10, gap: 8 }}
+        >
+          {profiles.map((p) => (
+            <TouchableOpacity
+              key={p.id}
+              onPress={() => setActiveId(p.id)}
+              style={[m.chip, activeId === p.id && m.chipActive]}
+            >
+              <Text
+                style={[m.chipText, activeId === p.id && { color: C.primary }]}
+              >
+                {p.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+
+      {loading && !refreshing ? (
+        <View style={s.center}>
+          <ActivityIndicator color={C.primary} />
+          <Text style={[s.muted, { marginTop: 12 }]}>Mesajlar yükleniyor…</Text>
+        </View>
+      ) : error ? (
+        <View style={s.center}>
+          <Text style={{ fontSize: 28, marginBottom: 8 }}>⚠️</Text>
+          <Text
+            style={[s.muted, { textAlign: "center", paddingHorizontal: 32 }]}
+          >
+            {error}
+          </Text>
+          <TouchableOpacity
+            style={s.retryBtn}
+            onPress={() => activeId && loadMessages(activeId)}
+          >
+            <Text style={{ color: C.primary, fontWeight: "700" }}>
+              Tekrar Dene
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : messages.length === 0 ? (
+        <View style={s.center}>
+          <Text style={{ fontSize: 32, marginBottom: 8 }}>✅</Text>
+          <Text style={s.muted}>Riskli mesaj bulunamadı.</Text>
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={{ padding: 12, paddingBottom: 32 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={C.primary}
+            />
+          }
+        >
+          <Text style={[s.sectionTitle, { marginBottom: 12 }]}>
+            {messages.length} RİSKLİ / SİLİNEN MESAJ
+          </Text>
+          {messages.map((msg, i) => {
+            const color = riskColor(msg.risk_level);
+            const body = msg.is_redacted
+              ? "[Finansal veri gizlendi]"
+              : msg.text || (msg.has_media ? "[Medya]" : "—");
+            return (
+              <View
+                key={`${msg.timestamp}-${i}`}
+                style={[
+                  m.card,
+                  msg.is_deleted && {
+                    borderColor: C.red + "55",
+                    backgroundColor: C.red + "08",
+                  },
+                ]}
+              >
+                <View style={[s.row, { marginBottom: 4 }]}>
+                  <View
+                    style={[
+                      s.dot,
+                      { backgroundColor: color, width: 8, height: 8 },
+                    ]}
+                  />
+                  <Text style={m.chatName} numberOfLines={1}>
+                    {msg.chat_name}
+                  </Text>
+                  <Text style={m.ts}>{fmtTs(msg.timestamp)}</Text>
+                </View>
+
+                {!msg.is_from_me && (
+                  <Text style={m.sender} numberOfLines={1}>
+                    {msg.sender}
+                  </Text>
+                )}
+
+                <Text
+                  numberOfLines={3}
+                  style={[
+                    m.body,
+                    msg.is_redacted && { color: C.muted, fontStyle: "italic" },
+                  ]}
+                >
+                  {body}
+                </Text>
+
+                <View
+                  style={[s.row, { marginTop: 8, flexWrap: "wrap", gap: 6 }]}
+                >
+                  {msg.is_deleted && (
+                    <View
+                      style={[
+                        m.badge,
+                        {
+                          backgroundColor: C.red + "22",
+                          borderColor: C.red + "55",
+                        },
+                      ]}
+                    >
+                      <Text style={[m.badgeText, { color: C.red }]}>
+                        🗑 Silindi
+                      </Text>
+                    </View>
+                  )}
+                  {msg.risk_level !== "none" && (
+                    <View
+                      style={[
+                        m.badge,
+                        {
+                          backgroundColor: color + "22",
+                          borderColor: color + "55",
+                        },
+                      ]}
+                    >
+                      <Text style={[m.badgeText, { color }]}>
+                        ⚠ {riskLabel(msg.risk_level)}
+                      </Text>
+                    </View>
+                  )}
+                  {msg.risk_categories?.map((cat) => (
+                    <View
+                      key={cat}
+                      style={[
+                        m.badge,
+                        { backgroundColor: C.surface, borderColor: C.border },
+                      ]}
+                    >
+                      <Text style={[m.badgeText, { color: C.muted }]}>
+                        {cat}
+                      </Text>
+                    </View>
+                  ))}
+                  {msg.is_from_me && (
+                    <View
+                      style={[
+                        m.badge,
+                        { backgroundColor: C.surface, borderColor: C.border },
+                      ]}
+                    >
+                      <Text style={[m.badgeText, { color: C.muted }]}>
+                        Gönderilen
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+            );
+          })}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+function SettingsScreen({
+  onProfileDeleted,
+}: {
+  onProfileDeleted: () => void;
+}) {
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  const [cfg, setCfg] = useState<NotifConfig>(DEFAULT_CFG);
+  const [cfgBusy, setCfgBusy] = useState(false);
+  const [cfgMsg, setCfgMsg] = useState<string | null>(null);
+
+  const [zones, setZones] = useState<SafeZone[]>([]);
+  const [zoneName, setZoneName] = useState("");
+  const [pendingCoord, setPendingCoord] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [pendingRadius, setPendingRadius] = useState(500);
+  const [zonesBusy, setZonesBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => {
+    apiFetch(`${BACKEND}/api/profiles`)
+      .then((r) => r.json())
+      .then((data: Profile[]) => {
+        setProfiles(data);
+        if (data.length) setActiveId(data[0].id);
+      })
+      .catch(() => {});
+  }, []);
+
+  const loadZones = useCallback((id: string) => {
+    apiFetch(`${BACKEND}/api/zones/${id}`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setZones)
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!activeId) return;
+    apiFetch(`${BACKEND}/api/risk/${activeId}/config`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) setCfg({ ...DEFAULT_CFG, ...data });
+      })
+      .catch(() => {});
+    loadZones(activeId);
+  }, [activeId, loadZones]);
+
+  const saveCfg = async () => {
+    if (!activeId) return;
+    setCfgBusy(true);
+    setCfgMsg(null);
+    try {
+      const res = await apiFetch(`${BACKEND}/api/risk/${activeId}/config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...cfg, profile_id: activeId }),
+      });
+      setCfgMsg(res.ok ? "✓ Kaydedildi" : `Hata: ${res.status}`);
+    } catch (e: any) {
+      setCfgMsg("Hata: " + e.message);
+    } finally {
+      setCfgBusy(false);
+    }
+  };
+
+  const addZone = async () => {
+    if (!activeId || !zoneName.trim() || !pendingCoord) return;
+    setZonesBusy(true);
+    try {
+      const res = await apiFetch(`${BACKEND}/api/zones/${activeId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: zoneName.trim(),
+          latitude: pendingCoord.latitude,
+          longitude: pendingCoord.longitude,
+          radius_meters: pendingRadius,
+        }),
+      });
+      if (res.ok) {
+        setZoneName("");
+        setPendingCoord(null);
+        setPendingRadius(500);
+        loadZones(activeId);
+      }
+    } catch {
+    } finally {
+      setZonesBusy(false);
+    }
+  };
+
+  const deleteZone = (zoneId: string) => {
+    Alert.alert("Bölgeyi Sil", "Bu güvenli bölge silinecek.", [
+      { text: "İptal", style: "cancel" },
+      {
+        text: "Sil",
+        style: "destructive",
+        onPress: async () => {
+          await apiFetch(`${BACKEND}/api/zones/${activeId}/${zoneId}`, {
+            method: "DELETE",
+          }).catch(() => {});
+          if (activeId) loadZones(activeId);
+        },
+      },
+    ]);
+  };
+
+  const deleteProfile = () => {
+    Alert.alert(
+      "Profili Sil",
+      "Tüm izleme verileri silinecek. Bu işlem geri alınamaz.",
+      [
+        { text: "İptal", style: "cancel" },
+        {
+          text: "Sil",
+          style: "destructive",
+          onPress: async () => {
+            if (!activeId) return;
+            setDeleting(true);
+            try {
+              await apiFetch(`${BACKEND}/api/profiles/${activeId}`, {
+                method: "DELETE",
+              });
+              await AsyncStorage.removeItem(SETUP_KEY);
+              onProfileDeleted();
+            } catch {
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const upd = (k: keyof NotifConfig) => (v: any) =>
+    setCfg((prev) => ({ ...prev, [k]: v }));
+
+  return (
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: C.bg }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      {/* Profile picker */}
+      {profiles.length > 1 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={{
+            flexGrow: 0,
+            borderBottomWidth: 1,
+            borderBottomColor: C.border,
+          }}
+          contentContainerStyle={{ padding: 10, gap: 8 }}
+        >
+          {profiles.map((p) => (
+            <TouchableOpacity
+              key={p.id}
+              onPress={() => setActiveId(p.id)}
+              style={[m.chip, activeId === p.id && m.chipActive]}
+            >
+              <Text
+                style={[m.chipText, activeId === p.id && { color: C.primary }]}
+              >
+                {p.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
+
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 48 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* ── 1. Bildirimler ───────────────────────────────────────── */}
+        <Text style={s.sectionTitle}>🔔 BİLDİRİMLER</Text>
+        <View style={g.section}>
+          <Text style={g.fieldLabel}>E-POSTA</Text>
+          <TextInput
+            style={g.input}
+            value={cfg.email}
+            onChangeText={upd("email")}
+            placeholder="ebeveyn@mail.com"
+            placeholderTextColor={C.muted}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          <Text style={g.fieldLabel}>UYARI EŞİĞİ (0–100)</Text>
+          <TextInput
+            style={g.input}
+            value={String(cfg.notify_on_score_above)}
+            onChangeText={(v) => upd("notify_on_score_above")(parseInt(v) || 0)}
+            keyboardType="number-pad"
+            maxLength={3}
+            placeholder="50"
+            placeholderTextColor={C.muted}
+          />
+
+          <ToggleRow
+            label="Silinen mesaj uyarısı"
+            value={cfg.notify_on_deleted_message}
+            onChange={upd("notify_on_deleted_message")}
+          />
+          <ToggleRow
+            label="Bölge çıkış uyarısı"
+            value={cfg.notify_on_geofence_exit}
+            onChange={upd("notify_on_geofence_exit")}
+          />
+          <ToggleRow
+            label="Riskli uygulama uyarısı"
+            value={cfg.notify_on_risky_app}
+            onChange={upd("notify_on_risky_app")}
+          />
+
+          <View style={s.row}>
+            <View style={{ flex: 1, marginRight: 8 }}>
+              <Text style={g.fieldLabel}>GECE BAŞLANGICI</Text>
+              <TextInput
+                style={g.input}
+                value={cfg.night_mode_start}
+                onChangeText={upd("night_mode_start")}
+                placeholder="23:00"
+                placeholderTextColor={C.muted}
+                maxLength={5}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={g.fieldLabel}>GECE BİTİŞİ</Text>
+              <TextInput
+                style={g.input}
+                value={cfg.night_mode_end}
+                onChangeText={upd("night_mode_end")}
+                placeholder="07:00"
+                placeholderTextColor={C.muted}
+                maxLength={5}
+              />
+            </View>
+          </View>
+
+          {cfgMsg && (
+            <Text style={[g.msg, cfgMsg.startsWith("✓") && { color: C.green }]}>
+              {cfgMsg}
+            </Text>
+          )}
+          <TouchableOpacity
+            style={[g.btn, cfgBusy && g.btnDisabled]}
+            onPress={saveCfg}
+            disabled={cfgBusy}
+          >
+            {cfgBusy ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={g.btnText}>Kaydet</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {/* ── 2. Güvenli Bölgeler ──────────────────────────────────── */}
+        <Text style={[s.sectionTitle, { marginTop: 24 }]}>
+          📍 GÜVENLİ BÖLGELER
+        </Text>
+        <View style={g.section}>
+          {zones.length === 0 ? (
+            <Text style={[s.muted, { paddingVertical: 8 }]}>
+              Henüz güvenli bölge yok.
+            </Text>
+          ) : (
+            zones.map((z) => (
+              <View key={z.zone_id} style={g.zoneRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={g.zoneName}>{z.name}</Text>
+                  <Text style={s.muted}>
+                    {z.latitude.toFixed(4)}, {z.longitude.toFixed(4)} ·{" "}
+                    {z.radius_meters}m
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => deleteZone(z.zone_id)}
+                  style={g.deleteBtn}
+                >
+                  <Text
+                    style={{ color: C.red, fontSize: 13, fontWeight: "700" }}
+                  >
+                    Sil
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ))
+          )}
+
+          <Text style={[g.fieldLabel, { marginTop: 16 }]}>YENİ BÖLGE EKLE</Text>
+          <Text style={[s.muted, { fontSize: 12, marginBottom: 6 }]}>
+            Enlem ve boylamı girin veya mevcut bölgeyi haritada görün
+          </Text>
+
+          {zones.length > 0 && (
+            <TouchableOpacity
+              style={[g.btn, g.btnOutline, { marginBottom: 8 }]}
+              onPress={() => {
+                const z = zones[0];
+                Linking.openURL(
+                  `https://maps.apple.com/?ll=${z.latitude},${z.longitude}&z=14`,
+                );
+              }}
+            >
+              <Text style={g.btnOutlineText}>Haritada Gör (Apple Maps)</Text>
+            </TouchableOpacity>
+          )}
+
+          <Text style={g.fieldLabel}>ENLEM</Text>
+          <TextInput
+            style={g.input}
+            value={pendingCoord ? String(pendingCoord.latitude) : ""}
+            onChangeText={(v) => {
+              const lat = parseFloat(v);
+              if (!isNaN(lat))
+                setPendingCoord((c) => ({
+                  latitude: lat,
+                  longitude: c?.longitude ?? 0,
+                }));
+            }}
+            keyboardType="decimal-pad"
+            placeholder="41.0082"
+            placeholderTextColor={C.muted}
+          />
+          <Text style={g.fieldLabel}>BOYLAM</Text>
+          <TextInput
+            style={g.input}
+            value={pendingCoord ? String(pendingCoord.longitude) : ""}
+            onChangeText={(v) => {
+              const lng = parseFloat(v);
+              if (!isNaN(lng))
+                setPendingCoord((c) => ({
+                  latitude: c?.latitude ?? 0,
+                  longitude: lng,
+                }));
+            }}
+            keyboardType="decimal-pad"
+            placeholder="28.9784"
+            placeholderTextColor={C.muted}
+          />
+
+          {pendingCoord && (
+            <>
+              <Text style={[g.fieldLabel, { marginTop: 12 }]}>
+                YARICAP — {pendingRadius}m
+              </Text>
+              <TextInput
+                style={g.input}
+                value={String(pendingRadius)}
+                onChangeText={(v) => {
+                  const n = parseInt(v, 10);
+                  if (!isNaN(n) && n >= 100 && n <= 5000) setPendingRadius(n);
+                }}
+                keyboardType="numeric"
+                placeholder="100 – 5000"
+                placeholderTextColor={C.muted}
+              />
+              <Text style={g.fieldLabel}>BÖLGE ADI</Text>
+              <TextInput
+                style={g.input}
+                value={zoneName}
+                onChangeText={setZoneName}
+                placeholder="Ev, Okul, İş…"
+                placeholderTextColor={C.muted}
+              />
+              <TouchableOpacity
+                style={[g.btn, g.btnOutline, zonesBusy && g.btnDisabled]}
+                onPress={addZone}
+                disabled={zonesBusy}
+              >
+                {zonesBusy ? (
+                  <ActivityIndicator color={C.primary} />
+                ) : (
+                  <Text style={[g.btnText, { color: C.primary }]}>
+                    + Bölge Ekle
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+
+        {/* ── 3. Profil ────────────────────────────────────────────── */}
+        <Text style={[s.sectionTitle, { marginTop: 24 }]}>⚠️ PROFİL</Text>
+        <View style={g.section}>
+          <Text style={s.muted}>
+            Profili silmek tüm iCloud bağlantısını ve yerel verileri kaldırır.
+          </Text>
+          <TouchableOpacity
+            style={[g.btn, g.btnDanger, deleting && g.btnDisabled]}
+            onPress={deleteProfile}
+            disabled={deleting}
+          >
+            {deleting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={g.btnText}>Profili Sil</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
+
+// ─── Bottom Tab Bar ───────────────────────────────────────────────────────────
+
+type Tab = "dashboard" | "messages" | "settings";
+
+const TABS: { id: Tab; icon: string; label: string }[] = [
+  { id: "dashboard", icon: "🏠", label: "Ana Sayfa" },
+  { id: "messages", icon: "💬", label: "Mesajlar" },
+  { id: "settings", icon: "⚙️", label: "Ayarlar" },
+];
+
+function BottomBar({
+  active,
+  onSelect,
+}: {
+  active: Tab;
+  onSelect: (t: Tab) => void;
+}) {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={[s.tabBar, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+      {TABS.map((t) => (
+        <TouchableOpacity
+          key={t.id}
+          style={s.tabItem}
+          onPress={() => onSelect(t.id)}
+          activeOpacity={0.7}
+        >
+          {active === t.id && <View style={s.tabIndicator} />}
+          <Text style={{ fontSize: 20 }}>{t.icon}</Text>
+          <Text style={[s.tabLabel, active === t.id && { color: C.primary }]}>
+            {t.label}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+// ─── Root ─────────────────────────────────────────────────────────────────────
+
+function Root({ onProfileDeleted }: { onProfileDeleted: () => void }) {
+  const [tab, setTab] = useState<Tab>("dashboard");
+  const insets = useSafeAreaInsets();
+
+  return (
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
+      <StatusBar style="light" />
+
+      <View style={[s.header, { paddingTop: insets.top + 8 }]}>
+        <Text style={s.headerTitle}>👨‍👩‍👧 Aile Güvenliği</Text>
+        <View style={s.row}>
+          <View style={[s.dot, { backgroundColor: C.green }]} />
+          <Text style={[s.muted, { fontSize: 11 }]}>Canlı</Text>
+        </View>
+      </View>
+
+      <View style={{ flex: 1 }}>
+        {tab === "dashboard" && <DashboardScreen />}
+        {tab === "messages" && <MessagesScreen />}
+        {tab === "settings" && (
+          <SettingsScreen onProfileDeleted={onProfileDeleted} />
+        )}
+      </View>
+
+      <BottomBar active={tab} onSelect={setTab} />
+    </View>
+  );
+}
+
+export default function App() {
+  const [ready, setReady] = useState(false);
+  const [setup, setSetup] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem(SETUP_KEY).then((val) => {
+      setSetup(!!val);
+      setReady(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!setup) return;
+    registerPushToken();
+    const sub = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        const { title, body, data } = response.notification.request.content;
+        console.log("[Push] Bildirime tıklandı:", title, body, data);
+      },
+    );
+    return () => sub.remove();
+  }, [setup]);
+
+  if (!ready) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: C.bg,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <ActivityIndicator color={C.primary} />
+      </View>
+    );
+  }
+
+  return (
+    <SafeAreaProvider>
+      {setup ? (
+        <Root onProfileDeleted={() => setSetup(false)} />
+      ) : (
+        <ProfileCreateScreen onComplete={() => setSetup(true)} />
+      )}
+    </SafeAreaProvider>
+  );
+}
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
+const s = StyleSheet.create({
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: C.bg,
+  },
+  text: { color: C.text, fontSize: 16, fontWeight: "600" },
+  muted: { color: C.muted, fontSize: 13 },
+  row: { flexDirection: "row", alignItems: "center", gap: 4 },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+
+  header: {
+    backgroundColor: C.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  headerTitle: { color: C.text, fontSize: 18, fontWeight: "800" },
+
+  summaryStrip: {
+    flexDirection: "row",
+    backgroundColor: C.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    marginBottom: 20,
+    padding: 16,
+  },
+  summaryItem: { flex: 1, alignItems: "center" },
+  summaryNum: { color: C.text, fontSize: 24, fontWeight: "900" },
+  summaryLabel: {
+    color: C.muted,
+    fontSize: 11,
+    marginTop: 2,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  summaryDivider: { width: 1, backgroundColor: C.border, marginVertical: 4 },
+
+  sectionTitle: {
+    color: C.muted,
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1.5,
+    textTransform: "uppercase",
+    marginBottom: 10,
+    marginLeft: 2,
+  },
+
+  card: {
+    backgroundColor: C.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: C.border,
+    marginBottom: 12,
+    overflow: "hidden",
+  },
+  cardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    gap: 12,
+  },
+  cardName: { color: C.text, fontSize: 16, fontWeight: "700" },
+  cardSub: { fontSize: 12, fontWeight: "600" },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  avatarText: { color: "#fff", fontSize: 16, fontWeight: "900" },
+  scoreBadge: {
+    alignItems: "center",
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  scoreNum: { fontSize: 20, fontWeight: "900" },
+  scoreLabel: {
+    fontSize: 9,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+
+  locStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+    backgroundColor: C.bg,
+    minHeight: 52,
+  },
+  locText: { color: C.text, fontSize: 13, fontWeight: "500" },
+  zoneBadge: { fontSize: 11, fontWeight: "700", marginTop: 2 },
+  timeAgo: { color: C.muted, fontSize: 11 },
+
+  retryBtn: {
+    marginTop: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: C.primary + "44",
+    backgroundColor: C.primary + "11",
+  },
+
+  tabBar: {
+    flexDirection: "row",
+    backgroundColor: C.surface,
+    borderTopWidth: 1,
+    borderTopColor: C.border,
+    paddingTop: 8,
+  },
+  tabItem: { flex: 1, alignItems: "center", gap: 3, paddingTop: 4 },
+  tabLabel: { color: C.muted, fontSize: 11, fontWeight: "600" },
+  tabIndicator: {
+    position: "absolute",
+    top: 0,
+    width: 28,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: C.primary,
+  },
+});
+
+// MessagesScreen kart stilleri
+const m = StyleSheet.create({
+  card: {
+    backgroundColor: C.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 14,
+    marginBottom: 10,
+  },
+  chatName: {
+    flex: 1,
+    color: C.text,
+    fontWeight: "700",
+    fontSize: 14,
+    marginLeft: 6,
+  },
+  ts: { color: C.muted, fontSize: 11, flexShrink: 0 },
+  sender: {
+    color: C.primary,
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 2,
+    marginLeft: 14,
+  },
+  body: { color: C.text, fontSize: 14, marginTop: 6, lineHeight: 20 },
+  badge: {
+    borderRadius: 6,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  badgeText: { fontSize: 11, fontWeight: "700" },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    backgroundColor: C.surface,
+    borderColor: C.border,
+  },
+  chipActive: { backgroundColor: C.primary + "22", borderColor: C.primary },
+  chipText: { color: C.muted, fontWeight: "600", fontSize: 13 },
+});
+
+// SettingsScreen + ProfileCreateScreen ortak form stilleri
+const g = StyleSheet.create({
+  section: {
+    backgroundColor: C.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: C.border,
+    padding: 16,
+    marginBottom: 4,
+  },
+  fieldLabel: {
+    color: C.muted,
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 1.5,
+    marginBottom: 6,
+    marginTop: 12,
+  },
+  settingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  settingLabel: { flex: 1, color: C.text, fontSize: 14 },
+  input: {
+    backgroundColor: C.bg,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 10,
+    color: C.text,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+  },
+  msg: { fontSize: 13, color: C.red, marginTop: 8 },
+  btn: {
+    marginTop: 16,
+    backgroundColor: C.primary,
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  btnOutline: {
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: C.primary,
+  },
+  btnDanger: { backgroundColor: C.red },
+  btnDisabled: { opacity: 0.5 },
+  btnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  zoneRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: C.border,
+  },
+  zoneName: { color: C.text, fontWeight: "600", fontSize: 14, marginBottom: 2 },
+  deleteBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: C.red + "18",
+    borderWidth: 1,
+    borderColor: C.red + "44",
+  },
+  map: { height: 260, borderRadius: 12, marginTop: 4, overflow: "hidden" },
+});
+
+// ProfileCreateScreen'e özel stiller (ana s objesini kirletmemek için ayrı)
+const f = StyleSheet.create({
+  sheet: { flexGrow: 1, paddingHorizontal: 28, backgroundColor: C.bg },
+  heading: { color: C.text, fontSize: 26, fontWeight: "900", marginBottom: 8 },
+  sub: { color: C.muted, fontSize: 14, marginBottom: 32, lineHeight: 20 },
+  label: {
+    color: C.muted,
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 1.5,
+    marginBottom: 6,
+    marginTop: 16,
+  },
+  input: {
+    backgroundColor: C.surface,
+    borderWidth: 1,
+    borderColor: C.border,
+    borderRadius: 12,
+    color: C.text,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+  },
+  error: { color: "#ef4444", fontSize: 13, marginTop: 12 },
+  btn: {
+    marginTop: 28,
+    backgroundColor: C.primary,
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: "center",
+  },
+  btnDisabled: { opacity: 0.5 },
+  btnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+  back: { marginTop: 16, paddingVertical: 12 },
+});
