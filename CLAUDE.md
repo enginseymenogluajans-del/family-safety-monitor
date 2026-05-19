@@ -180,20 +180,14 @@ family-safety-monitor/
 - **Bookmarks endpoint** — GET /api/bookmarks/{profile_id}
 - **LiveScreenshots TypeError fix** — screenshots.map guard
 
-### Yapılacak 🚧
-
-> **Hedef platform: iPhone (iOS only). Android agent kapsam dışı.**
-
-- [ ] **iPhone Onboarding UI** (bir sonraki görev):
-  - Part 1: iCloud bağlantı formu + 2FA modal (POST /api/auth/icloud, POST /api/auth/2fa)
-  - Part 2: Yerel backup bağlayıcı (POST /api/auth/local-backup)
-  - Part 3: WhatsApp QR paneli (GET /api/whatsapp/qr endpoint + web modal)
-  - Part 4: Bağlantı durumu paneli (GET /api/connections/default endpoint)
+- [x] **iPhone Onboarding UI** (iCloud, 2FA, Local Backup, WhatsApp QR, Connections panel)
+- [x] **Haftalık PDF Raporu** (FastAPI pdf_bytes generation + email SMTP integration)
+- [x] **Anomali Tespiti** (Behavioral anomalies, night use)
+- [x] **İletişim Haritası** (Aggregated SMS + WA communication stats)
+- [ ] **Supabase Realtime Entegrasyonu** (Uzaktan Canlı Kontroller, Cihaz durumu, Canlı Konum ve Canlı Ekran Görüntüsü takibi)
 - [ ] Ekran kaydı / görüntüsü yakalama (Eyezy benzeri)
 - [ ] Screen Time API entegrasyonu
-- [ ] Haftalık PDF rapor
-- [ ] Anomali tespiti (gece kullanımı, ani artışlar)
-- [ ] İletişim haritası (kiminle ne sıklıkta)
+
 
 ## API Endpoint'leri
 

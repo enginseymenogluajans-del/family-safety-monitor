@@ -13,7 +13,17 @@
       "Bash(findstr \"IPv4\")",
       "Read(//c/Users/engin/Desktop/ŞİRKET PROJEM/ENGİN OFİS/claude-marketing-skills/**)",
       "Bash(npm --version)",
-      "Bash(open /Users/enginseymenoglu/Desktop/family-safety-monitor/mobile/ios/mobile.xcworkspace)"
+      "Bash(open /Users/enginseymenoglu/Desktop/family-safety-monitor/mobile/ios/mobile.xcworkspace)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:docs.wwebjs.dev)",
+      "WebFetch(domain:guide.wwebjs.dev)",
+      "WebFetch(domain:wwebjs.dev)",
+      "Read(//c/tmp/**)",
+      "Bash(curl -s \"https://raw.githubusercontent.com/pedroslopez/whatsapp-web.js/main/package.json\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('wwebjs version:', d.get\\('version','?'\\)\\); deps=d.get\\('dependencies',{}\\); print\\('puppeteer:', deps.get\\('puppeteer', deps.get\\('puppeteer-core','not found'\\)\\)\\)\")",
+      "Bash(cmd /c \"taskkill /F /IM chrome.exe >nul 2>&1 & taskkill /F /IM chromium.exe >nul 2>&1 & echo Prosesler sonlandirildi\")",
+      "Bash(cmd /c \"rmdir /s /q .wwebjs_auth 2>&1 & rmdir /s /q .wwebjs_cache 2>&1 & echo Temizlendi\")"
     ]
   }
 }

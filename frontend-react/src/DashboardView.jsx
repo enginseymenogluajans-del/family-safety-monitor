@@ -19,8 +19,10 @@ import {
   ShieldCheck,
   CreditCard,
   Shield,
+  Bell,
+  BellOff,
 } from "lucide-react";
-import iphoneMockup from "./assets/iphone_mockup.png";
+import { supabase } from "./supabaseClient";
 
 const PROFILE_ID = "default";
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8000";
@@ -63,6 +65,11 @@ export default function DashboardView() {
   const [locationHistory, setLocationHistory] = useState([]);
   const [diagnostics, setDiagnostics] = useState(null);
   const [comingSoon, setComingSoon] = useState(false);
+  const [isCharging, setIsCharging] = useState(false);
+  const [lastSeen, setLastSeen] = useState(null);
+  const [gpsFlash, setGpsFlash] = useState(false);
+  const [androidNotifs, setAndroidNotifs] = useState([]);
+  const [androidDeleted, setAndroidDeleted] = useState([]);
 
   useEffect(() => {
     let alive = true;
@@ -108,6 +115,43 @@ export default function DashboardView() {
         }
         if (Array.isArray(diag) && diag.length) setDiagnostics(diag[0]);
         else if (diag && !Array.isArray(diag)) setDiagnostics(diag);
+
+        // Android cihaz bilgisi
+        const devRes = await apiFetch(
+          `${API_BASE}/api/android-device/${PROFILE_ID}`,
+        ).then((r) => (r.ok ? r.json() : null));
+        if (devRes && !alive) return;
+        if (devRes && devRes.model) {
+          setDiagnostics((prev) => ({
+            model:
+              devRes.model +
+              (devRes.manufacturer ? ` (${devRes.manufacturer})` : ""),
+            os_version: devRes.os_version || prev?.os_version || "—",
+            serial: prev?.serial || "—",
+            battery: devRes.battery ?? prev?.battery,
+            wifi_ssid: devRes.wifi_ssid || prev?.wifi_ssid || "—",
+          }));
+          setIsCharging(!!devRes.is_charging);
+          setLastSeen(devRes.last_seen || null);
+          setHealth((prev) =>
+            prev?.status === "ok"
+              ? prev
+              : { status: "ok", whatsapp_agent: prev?.whatsapp_agent ?? false },
+          );
+        }
+
+        // Android bildirimleri
+        const [notifRes, delRes] = await Promise.all([
+          apiFetch(
+            `${API_BASE}/api/android-notifications/${PROFILE_ID}?limit=20`,
+          ).then((r) => (r.ok ? r.json() : [])),
+          apiFetch(
+            `${API_BASE}/api/android-notifications/${PROFILE_ID}/deleted?limit=10`,
+          ).then((r) => (r.ok ? r.json() : [])),
+        ]);
+        if (!alive) return;
+        if (Array.isArray(notifRes)) setAndroidNotifs(notifRes);
+        if (Array.isArray(delRes)) setAndroidDeleted(delRes);
       } catch {
         /* use mock */
       }
@@ -119,6 +163,166 @@ export default function DashboardView() {
       clearInterval(t);
     };
   }, []);
+
+  // Supabase Realtime Cihaz Durum Aboneliği
+  useEffect(() => {
+    const hasSupabase = !!(
+      import.meta.env.VITE_SUPABASE_URL &&
+      import.meta.env.VITE_SUPABASE_URL !==
+        "https://your-project-id.supabase.co"
+    );
+    if (!hasSupabase) return;
+
+    const fetchInitialStatus = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("device_status")
+          .select("*")
+          .eq("profile_id", PROFILE_ID)
+          .single();
+
+        if (!error && data) {
+          setDiagnostics({
+            model: data.model,
+            os_version: data.os_version,
+            serial: data.serial_no,
+            battery: data.battery_level,
+            wifi_ssid: data.wifi_ssid || "Wi-Fi Bağlı",
+          });
+          setHealth({
+            status: data.agent_active ? "ok" : "offline",
+            whatsapp_agent: data.wa_active,
+          });
+          setIsCharging(!!data.is_charging);
+          setLastSeen(data.last_seen || null);
+        }
+      } catch (err) {
+        console.error("Supabase initial status fetch error:", err);
+      }
+    };
+
+    fetchInitialStatus();
+
+    const channel = supabase
+      .channel(`device-status-realtime-${PROFILE_ID}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "device_status",
+          filter: `profile_id=eq.${PROFILE_ID}`,
+        },
+        (payload) => {
+          if (payload.new) {
+            const data = payload.new;
+            setDiagnostics({
+              model: data.model,
+              os_version: data.os_version,
+              serial: data.serial_no,
+              battery: data.battery_level,
+              wifi_ssid: data.wifi_ssid || "Wi-Fi Bağlı",
+            });
+            setHealth({
+              status: data.agent_active ? "ok" : "offline",
+              whatsapp_agent: data.wa_active,
+            });
+            setIsCharging(!!data.is_charging);
+            setLastSeen(data.last_seen || null);
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Supabase Realtime GPS Log Aboneliği
+  useEffect(() => {
+    const hasSupabase = !!(
+      import.meta.env.VITE_SUPABASE_URL &&
+      import.meta.env.VITE_SUPABASE_URL !==
+        "https://your-project-id.supabase.co"
+    );
+    if (!hasSupabase) return;
+
+    supabase
+      .from("gps_logs")
+      .select("*")
+      .eq("profile_id", PROFILE_ID)
+      .order("timestamp", { ascending: false })
+      .limit(3)
+      .then(({ data }) => {
+        if (data?.length) setLocationHistory(data.slice(0, 3));
+      });
+
+    const channel = supabase
+      .channel(`gps-logs-realtime-${PROFILE_ID}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "gps_logs",
+          filter: `profile_id=eq.${PROFILE_ID}`,
+        },
+        (payload) => {
+          if (payload.new) {
+            setLocationHistory((prev) => [payload.new, ...prev.slice(0, 2)]);
+            setGpsFlash(true);
+            setTimeout(() => setGpsFlash(false), 2000);
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Uzaktan Komut Gönderim Yönetimi
+  const handleRemoteCommand = async (commandType) => {
+    const hasSupabase = !!(
+      import.meta.env.VITE_SUPABASE_URL &&
+      import.meta.env.VITE_SUPABASE_URL !==
+        "https://your-project-id.supabase.co"
+    );
+    if (hasSupabase) {
+      try {
+        const { error } = await supabase.from("remote_commands").insert([
+          {
+            profile_id: PROFILE_ID,
+            command_type: commandType,
+            status: "pending",
+          },
+        ]);
+        if (error) throw error;
+        alert(
+          `[Supabase Realtime] '${commandType}' uzaktan komutu cihaza başarıyla iletildi!`,
+        );
+        return;
+      } catch (err) {
+        console.error("Supabase command error:", err);
+      }
+    }
+
+    // Fallback: Yerel API veya Bilgilendirme Kutusu
+    if (commandType === "screenshot") {
+      try {
+        await apiFetch(`${API_BASE}/api/screenshots/take/${PROFILE_ID}`, {
+          method: "POST",
+        });
+        alert("Ekran görüntüsü alma komutu yerel API üzerinden gönderildi!");
+      } catch (e) {
+        alert("Bağlantı hatası!");
+      }
+    } else {
+      setComingSoon(true);
+    }
+  };
 
   const highAlerts = alerts.filter((a) => a.level === "high");
   const mediumAlerts = alerts.filter((a) => a.level === "medium");
@@ -384,12 +588,21 @@ export default function DashboardView() {
 
               <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
                 <div className="relative">
-                  <div className="absolute inset-0 bg-[#00a2ff]/40 rounded-full scale-[2.5] animate-ping" />
-                  <div className="relative w-12 h-12 bg-[#00a2ff] rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(0,162,255,0.6)] rotate-12 group-hover:rotate-0 transition-transform duration-500 border-2 border-white/20">
+                  <div
+                    className={`absolute inset-0 rounded-full scale-[2.5] ${gpsFlash ? "bg-emerald-400/60 animate-ping" : "bg-[#00a2ff]/40 animate-ping"}`}
+                  />
+                  <div
+                    className={`relative w-12 h-12 rounded-2xl flex items-center justify-center rotate-12 group-hover:rotate-0 border-2 border-white/20 transition-all duration-500 ${gpsFlash ? "bg-emerald-500 shadow-[0_0_24px_rgba(52,211,153,0.8)] scale-110" : "bg-[#00a2ff] shadow-[0_0_20px_rgba(0,162,255,0.6)] scale-100"}`}
+                  >
                     <MapPin className="w-6 h-6 text-white" />
                   </div>
                 </div>
               </div>
+              {gpsFlash && (
+                <div className="absolute bottom-10 left-1/2 -translate-x-1/2 bg-emerald-500/90 backdrop-blur-md text-white text-[9px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full shadow-lg animate-bounce">
+                  GPS Güncellendi
+                </div>
+              )}
 
               <div className="absolute bottom-3 right-3 bg-zinc-900/80 backdrop-blur-md px-3 py-1.5 rounded-lg border border-zinc-800">
                 <p className="text-[9px] font-black text-zinc-300 uppercase tracking-widest">
@@ -400,16 +613,25 @@ export default function DashboardView() {
           </div>
         </div>
 
-        {/* Device Information (Apple-style Info Card) */}
+        {/* Device Information Card */}
         <div className="bg-zinc-900/40 rounded-2xl border border-zinc-800/60 p-6 backdrop-blur-sm overflow-hidden relative">
           <div className="absolute -top-10 -right-10 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl" />
           <div className="mb-6 relative h-40 flex items-center justify-center">
             <div className="absolute inset-0 bg-blue-500/10 blur-3xl rounded-full" />
-            <img
-              src={iphoneMockup}
-              alt="iPhone 15 Pro"
-              className="h-full object-contain relative z-10 drop-shadow-2xl animate-float"
-            />
+            <div className="relative z-10 flex flex-col items-center gap-3">
+              <div
+                className={`w-20 h-20 rounded-3xl flex items-center justify-center border-2 shadow-2xl ${health?.status === "ok" ? "bg-[#00a2ff]/10 border-[#00a2ff]/40 shadow-[#00a2ff]/20" : "bg-zinc-800 border-zinc-700 shadow-black/30"}`}
+              >
+                <Smartphone
+                  className={`w-10 h-10 ${health?.status === "ok" ? "text-[#00a2ff]" : "text-zinc-500"}`}
+                />
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-500">
+                {health?.status === "ok"
+                  ? "Cihaz Bağlı"
+                  : "Bağlantı Bekleniyor"}
+              </span>
+            </div>
           </div>
           <div className="space-y-4">
             <div className="flex justify-between items-center group">
@@ -417,23 +639,29 @@ export default function DashboardView() {
                 Model
               </span>
               <span className="text-sm text-zinc-100 font-black">
-                {diagnostics?.model || "Bağlantı bekleniyor"}
+                {diagnostics?.model
+                  ? diagnostics.model.split("(")[0].trim()
+                  : "Bağlantı bekleniyor"}
               </span>
             </div>
             <div className="flex justify-between items-center group">
               <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">
-                Versiyon
+                Üretici
               </span>
               <span className="text-sm text-zinc-100 font-black">
-                {diagnostics?.os_version || "Bağlantı bekleniyor"}
+                {diagnostics?.model?.includes("(")
+                  ? diagnostics.model.split("(")[1]?.replace(")", "")
+                  : "—"}
               </span>
             </div>
             <div className="flex justify-between items-center group">
               <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">
-                Seri NO
+                Android
               </span>
               <span className="text-[11px] text-zinc-400 font-mono bg-zinc-800/50 px-2 py-0.5 rounded border border-zinc-700/50">
-                {diagnostics?.serial || "—"}
+                {diagnostics?.os_version
+                  ? `Android ${diagnostics.os_version}`
+                  : "—"}
               </span>
             </div>
             <div className="flex justify-between items-center group">
@@ -465,6 +693,14 @@ export default function DashboardView() {
             </div>
             <div className="flex justify-between items-center group">
               <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">
+                Son Görülme
+              </span>
+              <span className="text-sm text-zinc-100 font-black">
+                {lastSeen ? timeAgo(lastSeen) : "—"}
+              </span>
+            </div>
+            <div className="flex justify-between items-center group">
+              <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider">
                 WhatsApp
               </span>
               <div
@@ -483,7 +719,16 @@ export default function DashboardView() {
           </div>
           <div className="mt-8 flex flex-wrap gap-4 pt-6 border-t border-zinc-800/50">
             <div className="flex flex-col gap-1 px-3 py-2 bg-zinc-800/40 rounded-xl border border-zinc-700/30 flex-1 min-w-[70px]">
-              <Battery className="w-4 h-4 text-emerald-400" />
+              <div className="flex items-center gap-1">
+                <Battery
+                  className={`w-4 h-4 ${isCharging ? "text-yellow-400" : "text-emerald-400"}`}
+                />
+                {isCharging && (
+                  <span className="text-yellow-400 text-[10px] font-black">
+                    ⚡
+                  </span>
+                )}
+              </div>
               <span className="text-xs font-black text-zinc-100">
                 {diagnostics?.battery != null ? `${diagnostics.battery}%` : "—"}
               </span>
@@ -652,8 +897,8 @@ export default function DashboardView() {
               </p>
               <div className="grid grid-cols-2 gap-3">
                 <button
-                  onClick={() => setComingSoon(true)}
-                  className="group flex flex-col items-center justify-center gap-3 p-4 bg-zinc-100 text-zinc-950 rounded-2xl hover:bg-white transition-all shadow-xl shadow-white/5 active:scale-95"
+                  onClick={() => handleRemoteCommand("lock")}
+                  className="group flex flex-col items-center justify-center gap-3 p-4 bg-zinc-100 text-zinc-950 rounded-2xl hover:bg-white transition-all shadow-xl shadow-white/5 active:scale-95 cursor-pointer"
                 >
                   <Lock className="w-5 h-5 group-hover:scale-110 transition-transform" />
                   <span className="text-[9px] font-black uppercase tracking-tighter">
@@ -661,8 +906,8 @@ export default function DashboardView() {
                   </span>
                 </button>
                 <button
-                  onClick={() => setComingSoon(true)}
-                  className="group flex flex-col items-center justify-center gap-3 p-4 bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-2xl hover:text-white hover:border-zinc-700 transition-all active:scale-95"
+                  onClick={() => handleRemoteCommand("pin_reset")}
+                  className="group flex flex-col items-center justify-center gap-3 p-4 bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-2xl hover:text-white hover:border-zinc-700 transition-all active:scale-95 cursor-pointer"
                 >
                   <Key className="w-5 h-5 group-hover:scale-110 transition-transform" />
                   <span className="text-[9px] font-black uppercase tracking-tighter">
@@ -670,18 +915,8 @@ export default function DashboardView() {
                   </span>
                 </button>
                 <button
-                  onClick={async () => {
-                    try {
-                      await apiFetch(
-                        `${API_BASE}/api/screenshots/take/${PROFILE_ID}`,
-                        { method: "POST" },
-                      );
-                      alert("Ekran görüntüsü komutu gönderildi!");
-                    } catch (e) {
-                      alert("Bağlantı hatası!");
-                    }
-                  }}
-                  className="group flex flex-col items-center justify-center gap-3 p-4 bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-2xl hover:text-white hover:border-zinc-700 transition-all active:scale-95"
+                  onClick={() => handleRemoteCommand("screenshot")}
+                  className="group flex flex-col items-center justify-center gap-3 p-4 bg-zinc-900 border border-zinc-800 text-zinc-400 rounded-2xl hover:text-white hover:border-zinc-700 transition-all active:scale-95 cursor-pointer"
                 >
                   <Smartphone className="w-5 h-5 group-hover:scale-110 transition-transform" />
                   <span className="text-[9px] font-black uppercase tracking-tighter">
@@ -689,8 +924,8 @@ export default function DashboardView() {
                   </span>
                 </button>
                 <button
-                  onClick={() => setComingSoon(true)}
-                  className="group flex flex-col items-center justify-center gap-3 p-4 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all active:scale-95"
+                  onClick={() => handleRemoteCommand("wipe")}
+                  className="group flex flex-col items-center justify-center gap-3 p-4 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all active:scale-95 cursor-pointer"
                 >
                   <ShieldAlert className="w-5 h-5 group-hover:scale-110 transition-transform" />
                   <span className="text-[9px] font-black uppercase tracking-tighter">
@@ -700,6 +935,77 @@ export default function DashboardView() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Android Bildirim Paneli */}
+        <div className="bg-zinc-900/40 rounded-2xl border border-zinc-800/60 p-6 lg:col-span-3 backdrop-blur-sm">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-[15px] font-black text-zinc-200 flex items-center gap-2 uppercase tracking-tight">
+              <Bell className="w-4 h-4 text-amber-400" /> Android Bildirimleri
+            </h2>
+            {androidDeleted.length > 0 && (
+              <span className="flex items-center gap-1.5 text-[9px] font-black text-red-400 bg-red-400/10 border border-red-400/20 px-2.5 py-1 rounded-full uppercase tracking-widest">
+                <BellOff className="w-3 h-3" /> {androidDeleted.length} Silindi
+              </span>
+            )}
+          </div>
+
+          {androidNotifs.length === 0 ? (
+            <p className="text-xs text-zinc-600 text-center py-8">
+              Henüz bildirim yok. Android ajan bağlandığında veriler burada
+              görünür.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {androidNotifs.slice(0, 12).map((n) => {
+                const isDeleted = n.event === "deleted";
+                const appName = n.package
+                  ? n.package.split(".").slice(-1)[0]
+                  : "?";
+                return (
+                  <div
+                    key={n.id}
+                    className={`flex items-start gap-3 p-3 rounded-xl border transition-colors ${
+                      isDeleted
+                        ? "bg-red-500/5 border-red-500/20"
+                        : "bg-zinc-800/30 border-zinc-700/30 hover:border-zinc-600"
+                    }`}
+                  >
+                    <div
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border text-[10px] font-black uppercase ${isDeleted ? "bg-red-500/20 border-red-500/30 text-red-400" : "bg-zinc-800 border-zinc-700 text-zinc-400"}`}
+                    >
+                      {appName[0]?.toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-[10px] font-black text-zinc-400 uppercase truncate">
+                          {appName}
+                        </span>
+                        {isDeleted && (
+                          <span className="text-[8px] font-black text-white bg-red-500 px-1.5 py-0.5 rounded uppercase shrink-0">
+                            SİLİNDİ
+                          </span>
+                        )}
+                      </div>
+                      {n.title && (
+                        <p className="text-xs font-bold text-zinc-200 truncate">
+                          {n.title}
+                        </p>
+                      )}
+                      {n.text && (
+                        <p className="text-[10px] text-zinc-500 truncate mt-0.5">
+                          {n.text}
+                        </p>
+                      )}
+                      <p className="text-[9px] text-zinc-700 mt-1 font-mono">
+                        {timeAgo(n.timestamp)}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>

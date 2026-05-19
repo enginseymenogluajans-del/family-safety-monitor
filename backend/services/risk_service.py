@@ -2,6 +2,7 @@
 Risk Skoru & Ebeveyn Bildirimi Servisi
 Tüm kaynaklardan gelen olayları birleştirip günlük risk raporu üretir.
 """
+from __future__ import annotations
 import smtplib
 import os
 from datetime import datetime, timezone, date

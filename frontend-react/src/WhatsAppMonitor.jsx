@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { apiFetch } from "./api";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { apiFetch, BACKEND_URL } from "./api";
 import {
   MoreVertical,
   ShieldAlert,
@@ -8,9 +8,14 @@ import {
   MessageSquare,
   RefreshCw,
   WifiOff,
+  QrCode,
+  CheckCircle2,
+  X,
+  Wifi,
 } from "lucide-react";
 
-const WA_API = import.meta.env.VITE_WA_URL || "http://localhost:3001";
+// WA mesajları backend proxy üzerinden çekilir (CORS & ağ sorunlarını önler)
+const WA_API = BACKEND_URL;
 
 function fmtTime(ts) {
   if (!ts) return "";
@@ -44,40 +49,92 @@ export default function WhatsAppMonitor() {
   const [activeChat, setActiveChat] = useState(null);
   const bottomRef = useRef(null);
 
+  // ── 3-nokta menü ──────────────────────────────────────────────────────────
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  // ── QR Modal ──────────────────────────────────────────────────────────────
+  const [qrModal, setQrModal] = useState(false);
+  const [qrData, setQrData] = useState(null); // base64 data URL
+  const [qrConnected, setQrConnected] = useState(false);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [qrAgentDown, setQrAgentDown] = useState(false);
+
+  // ── Mesaj yükleme ─────────────────────────────────────────────────────────
+  const load = useCallback(async () => {
+    try {
+      const res = await apiFetch(`${WA_API}/api/wa/messages?limit=300`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setMessages(data);
+      setError(null);
+      setActiveChat((prev) => {
+        if (prev) return prev;
+        return data[0]?.chat_name ?? null;
+      });
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     let alive = true;
-    async function load() {
-      try {
-        const res = await apiFetch(`${WA_API}/api/messages?limit=300`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        if (!alive) return;
-        setMessages(data);
-        setError(null);
-        setActiveChat((prev) => {
-          if (prev) return prev;
-          const first = data[0]?.chat_name ?? null;
-          return first;
-        });
-      } catch (e) {
-        if (alive) setError(e.message);
-      } finally {
-        if (alive) setLoading(false);
-      }
-    }
-    load();
-    const t = setInterval(load, 15000);
+    const wrappedLoad = async () => {
+      if (!alive) return;
+      await load();
+    };
+    wrappedLoad();
+    const t = setInterval(wrappedLoad, 15000);
     return () => {
       alive = false;
       clearInterval(t);
     };
-  }, []);
+  }, [load]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [activeChat, messages.length]);
 
-  // Unique chats: last message per chat, sorted by timestamp desc
+  // ── Menü dışı tıklayınca kapat ────────────────────────────────────────────
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuOpen]);
+
+  // ── QR kodu çek ───────────────────────────────────────────────────────────
+  const fetchQR = useCallback(async () => {
+    setQrLoading(true);
+    try {
+      const r = await apiFetch(`${WA_API}/api/whatsapp/qr`);
+      const d = await r.json();
+      setQrAgentDown(!!d.error);
+      setQrConnected(!!d.connected);
+      setQrData(d.qr_base64 || null);
+    } catch {
+      setQrAgentDown(true);
+      setQrConnected(false);
+      setQrData(null);
+    } finally {
+      setQrLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!qrModal) return;
+    fetchQR();
+    const id = setInterval(fetchQR, 30000);
+    return () => clearInterval(id);
+  }, [qrModal, fetchQR]);
+
+  // ── Chat verileri ─────────────────────────────────────────────────────────
   const chats = Object.values(
     messages.reduce((acc, m) => {
       if (
@@ -117,7 +174,7 @@ export default function WhatsAppMonitor() {
                 <>
                   <WifiOff className="w-3 h-3 text-red-400" />
                   <span className="text-[10px] font-bold text-red-400 uppercase tracking-tighter">
-                    İzleme sunucusuna bağlanılamıyor
+                    Agent çevrimdışı — QR ile bağlan
                   </span>
                 </>
               ) : (
@@ -131,6 +188,7 @@ export default function WhatsAppMonitor() {
             </div>
           </div>
         </div>
+
         <div className="flex items-center gap-3">
           {loading && (
             <RefreshCw className="w-4 h-4 text-zinc-500 animate-spin" />
@@ -138,11 +196,154 @@ export default function WhatsAppMonitor() {
           <button className="p-2 hover:bg-zinc-800 rounded-lg transition-colors">
             <ShieldAlert className="w-4 h-4 text-zinc-500" />
           </button>
-          <button className="p-2 hover:bg-zinc-800 rounded-lg transition-colors">
-            <MoreVertical className="w-4 h-4 text-zinc-500" />
-          </button>
+
+          {/* 3-nokta menü */}
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              className={`p-2 rounded-lg transition-colors ${menuOpen ? "bg-zinc-700" : "hover:bg-zinc-800"}`}
+            >
+              <MoreVertical className="w-4 h-4 text-zinc-400" />
+            </button>
+
+            {menuOpen && (
+              <div className="absolute right-0 top-full mt-1 w-52 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setQrModal(true);
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-200 hover:bg-zinc-800 transition-colors"
+                >
+                  <QrCode className="w-4 h-4 text-emerald-400" />
+                  QR ile Bağlan
+                </button>
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    load();
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-200 hover:bg-zinc-800 transition-colors"
+                >
+                  <RefreshCw className="w-4 h-4 text-zinc-400" />
+                  Mesajları Yenile
+                </button>
+                <div className="h-px bg-zinc-800 mx-3" />
+                <button
+                  onClick={() => setMenuOpen(false)}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-sm text-zinc-600 hover:bg-zinc-800 transition-colors"
+                >
+                  <Wifi className="w-4 h-4 text-zinc-600" />
+                  Bağlantı Durumu
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* ── QR Modal ── */}
+      {qrModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* overlay */}
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setQrModal(false)}
+          />
+          <div className="relative z-10 bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl w-[360px] p-6">
+            {/* Kapat */}
+            <button
+              onClick={() => setQrModal(false)}
+              className="absolute top-4 right-4 p-1.5 hover:bg-zinc-800 rounded-lg transition-colors"
+            >
+              <X className="w-4 h-4 text-zinc-500" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+                <QrCode className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-zinc-100 uppercase tracking-widest">
+                  WhatsApp Bağlantısı
+                </h3>
+                <p className="text-[10px] text-zinc-500 mt-0.5">
+                  QR kodu tarayarak canlı mesaj takibini başlatın
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center">
+              {/* Bağlı */}
+              {qrConnected && (
+                <div className="flex flex-col items-center gap-3 py-8">
+                  <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
+                    <CheckCircle2 className="w-8 h-8 text-emerald-400" />
+                  </div>
+                  <p className="text-emerald-400 font-black text-sm uppercase tracking-widest">
+                    WhatsApp Bağlı
+                  </p>
+                  <p className="text-zinc-500 text-xs text-center">
+                    Mesajlar aktif olarak izleniyor.
+                  </p>
+                </div>
+              )}
+
+              {/* Agent çevrimdışı */}
+              {!qrConnected && qrAgentDown && (
+                <div className="flex flex-col items-center gap-3 py-6">
+                  <WifiOff className="w-10 h-10 text-red-400/50" />
+                  <p className="text-red-400 font-bold text-xs text-center">
+                    WhatsApp Agent çalışmıyor
+                  </p>
+                  <code className="text-[10px] bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 font-mono">
+                    cd whatsapp-agent && node index.js
+                  </code>
+                </div>
+              )}
+
+              {/* QR kodu */}
+              {!qrConnected && !qrAgentDown && qrData && (
+                <>
+                  <div className="bg-white p-3 rounded-xl shadow-lg mb-4">
+                    <img
+                      src={qrData}
+                      alt="WhatsApp QR Kodu"
+                      className="w-52 h-52 block"
+                    />
+                  </div>
+                  <p className="text-zinc-200 font-bold text-sm">
+                    QR Kodu Tarayın
+                  </p>
+                  <p className="text-zinc-500 text-xs mt-1 text-center">
+                    WhatsApp → Bağlı Cihazlar → Cihaz Ekle
+                  </p>
+                </>
+              )}
+
+              {/* Yükleniyor */}
+              {!qrConnected && !qrAgentDown && !qrData && (
+                <div className="flex flex-col items-center gap-3 py-8">
+                  <RefreshCw className="w-8 h-8 text-zinc-500 animate-spin" />
+                  <p className="text-zinc-500 text-xs">
+                    {qrLoading ? "QR Kodu Oluşturuluyor…" : "Agent bekleniyor…"}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={fetchQR}
+              className="mt-5 w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-bold transition-colors"
+            >
+              <RefreshCw
+                className={`w-3.5 h-3.5 ${qrLoading ? "animate-spin" : ""}`}
+              />
+              Yenile
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-1 overflow-hidden">
         {/* Sol: Sohbet listesi */}
@@ -153,9 +354,18 @@ export default function WhatsAppMonitor() {
             </div>
           )}
           {error && chats.length === 0 && (
-            <div className="p-4 text-red-400 text-xs text-center">
-              <WifiOff className="w-6 h-6 mx-auto mb-2 opacity-50" />
-              localhost:3001 erişilemiyor
+            <div className="p-4 text-center">
+              <WifiOff className="w-6 h-6 mx-auto mb-2 text-red-400/50" />
+              <p className="text-red-400 text-xs mb-3">
+                WhatsApp agent çevrimdışı veya mesaj yok
+              </p>
+              <button
+                onClick={() => setQrModal(true)}
+                className="flex items-center gap-2 mx-auto px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-emerald-400 text-[10px] font-black uppercase hover:bg-emerald-500/20 transition-colors"
+              >
+                <QrCode className="w-3.5 h-3.5" />
+                QR ile Bağlan
+              </button>
             </div>
           )}
           {chats.map((c) => (

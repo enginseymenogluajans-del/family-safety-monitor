@@ -72,6 +72,7 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == SCREEN_CAPTURE_REQUEST_CODE && resultCode == Activity.RESULT_OK && data != null) {
             val projection = projectionManager.getMediaProjection(resultCode, data)
             ScreenshotHelper.setMediaProjection(projection)
+            ScreenStreamManager.setMediaProjection(projection)
             
             // Servisi Başlat
             val serviceIntent = Intent(this, MainService::class.java)

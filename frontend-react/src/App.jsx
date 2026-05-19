@@ -30,6 +30,7 @@ import {
   SettingsView,
   DailyLogsView,
   RiskView,
+  ScreenTimeView,
 } from "./Views";
 import LiveScreenshots from "./LiveScreenshots";
 import {
@@ -65,6 +66,7 @@ import {
   Settings,
   ShieldAlert,
   Menu,
+  QrCode,
 } from "lucide-react";
 
 const NavItem = ({
@@ -300,9 +302,12 @@ function App() {
       case "Ayarlar":
         return <SettingsView />;
       case "iPhone Kurulumu":
+      case "WhatsApp Kurulum":
         return <SetupView />;
       case "Risk Raporu":
         return <RiskView />;
+      case "Ekran Süresi":
+        return <ScreenTimeView />;
 
       // Social Networks (using generic view)
       case "KiK":
@@ -540,6 +545,12 @@ function App() {
                 label="Yüklü Uygulamalar"
                 {...navProps}
               />
+              <NavItem
+                icon={Clock}
+                label="Ekran Süresi"
+                customColor="text-purple-400"
+                {...navProps}
+              />
             </nav>
           )}
         </div>
@@ -570,6 +581,12 @@ function App() {
                 icon={MessageSquare}
                 label="WhatsApp"
                 customColor="text-emerald-500"
+                {...navProps}
+              />
+              <NavItem
+                icon={QrCode}
+                label="WhatsApp Kurulum"
+                customColor="text-zinc-500"
                 {...navProps}
               />
             </nav>
@@ -651,19 +668,6 @@ function App() {
         </div>
 
         <div className="mt-auto border-t border-zinc-800 shrink-0">
-          <button
-            onClick={() => setActiveTab("iPhone Kurulumu")}
-            className={`w-full flex items-center gap-4 px-6 py-3 border-b border-zinc-800 transition-colors ${
-              activeTab === "iPhone Kurulumu"
-                ? "bg-zinc-800/80 text-[#00a2ff] border-l-2 border-[#00a2ff]"
-                : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-            }`}
-          >
-            <Smartphone className="w-5 h-5" />
-            <span className="font-bold text-sm uppercase tracking-wider">
-              iPhone Kurulumu
-            </span>
-          </button>
           <button
             onClick={() => setActiveTab("Ayarlar")}
             className={`w-full flex items-center gap-4 px-6 py-4 border-b border-zinc-800 transition-colors ${

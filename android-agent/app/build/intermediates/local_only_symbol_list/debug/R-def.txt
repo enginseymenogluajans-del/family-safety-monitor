@@ -1,0 +1,10 @@
+R_DEF: Internal format may change without notice
+local
+id btnPermission
+id btnSave
+id btnStartService
+id etBackendUrl
+id etProfileId
+id tvStatus
+layout activity_main
+string app_name

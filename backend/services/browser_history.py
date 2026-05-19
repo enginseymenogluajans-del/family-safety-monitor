@@ -2,6 +2,7 @@
 Tarayıcı Geçmişi Analizi
 Safari ve Chrome'un iCloud'a yedeklenen SQLite DB'lerini okur.
 """
+from __future__ import annotations
 import os
 import sqlite3
 import tempfile

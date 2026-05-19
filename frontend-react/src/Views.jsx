@@ -2616,7 +2616,9 @@ export const LiveControlView = () => {
   };
 
   useEffect(() => {
-    const socket = io("https://rich-endif-london-scotland.trycloudflare.com");
+    // Sinyal sunucusu URL'ini backend portunu 8001 ile degistirerek dinamik olarak hesaplar
+    const signalingUrl = BACKEND_URL.replace(":8000", ":8001");
+    const socket = io(signalingUrl);
     socketRef.current = socket;
 
     socket.on("connect", () => {
@@ -4551,6 +4553,153 @@ export const RiskView = () => {
           Henüz risk olayı yok.
         </div>
       )}
+    </div>
+  );
+};
+
+// ─── Screen Time View ─────────────────────────────────────────────────────────
+export const ScreenTimeView = () => {
+  const [apps, setApps] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [days, setDays] = useState(7);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    apiFetch(`${BACKEND_URL}/api/screen_time/default?days=${days}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!alive) return;
+        setApps(Array.isArray(data?.apps) ? data.apps : []);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [days]);
+
+  const totalSec = apps.reduce((s, a) => s + a.total_seconds, 0);
+
+  function fmtDuration(sec) {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    if (h > 0) return `${h}s ${m}dk`;
+    return `${m}dk`;
+  }
+
+  const CAT_COLOR = {
+    Sosyal: "text-pink-400",
+    Sistem: "text-zinc-400",
+    Google: "text-blue-400",
+    Uygulama: "text-amber-400",
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-zinc-950 text-zinc-300">
+      <TopBar title="📱 Ekran Süresi" />
+      <div className="p-6 flex-1 overflow-y-auto space-y-6">
+        {/* Filtre */}
+        <div className="flex items-center gap-3">
+          {[1, 7, 14, 30].map((d) => (
+            <button
+              key={d}
+              onClick={() => setDays(d)}
+              className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${days === d ? "bg-[#00a2ff] text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"}`}
+            >
+              {d === 1 ? "Bugün" : `${d} Gün`}
+            </button>
+          ))}
+          <span className="ml-auto text-xs text-zinc-600 font-mono">
+            Toplam: {fmtDuration(totalSec)}
+          </span>
+        </div>
+
+        {loading && (
+          <div className="text-center text-zinc-600 text-sm py-16">
+            Yükleniyor…
+          </div>
+        )}
+
+        {!loading && apps.length === 0 && (
+          <div className="text-center text-zinc-600 text-sm py-16">
+            Veri bulunamadı. Yerel backup bağlı olmalıdır.
+          </div>
+        )}
+
+        {!loading && apps.length > 0 && (
+          <div className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-zinc-800/50 text-zinc-400 font-semibold border-b border-zinc-800">
+                <tr>
+                  <th className="px-5 py-3">Uygulama</th>
+                  <th className="px-5 py-3">Kategori</th>
+                  <th className="px-5 py-3">Süre</th>
+                  <th className="px-5 py-3">Oturum</th>
+                  <th className="px-5 py-3">Oran</th>
+                  <th className="px-5 py-3">Son Kullanım</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-800/50">
+                {apps.map((app) => {
+                  const pct =
+                    totalSec > 0
+                      ? Math.round((app.total_seconds / totalSec) * 100)
+                      : 0;
+                  return (
+                    <tr
+                      key={app.bundle_id}
+                      className="hover:bg-zinc-800/30 transition-colors"
+                    >
+                      <td className="px-5 py-3">
+                        <div className="font-semibold text-zinc-200">
+                          {app.name}
+                        </div>
+                        <div className="text-[10px] text-zinc-600 font-mono">
+                          {app.bundle_id}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span
+                          className={`text-xs font-bold ${CAT_COLOR[app.category] ?? "text-zinc-400"}`}
+                        >
+                          {app.category}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 font-mono text-zinc-200 font-bold">
+                        {fmtDuration(app.total_seconds)}
+                      </td>
+                      <td className="px-5 py-3 text-zinc-400">
+                        {app.sessions}
+                      </td>
+                      <td className="px-5 py-3 w-36">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className="h-full bg-[#00a2ff] rounded-full"
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <span className="text-[10px] text-zinc-500 w-8 text-right">
+                            {pct}%
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3 text-xs text-zinc-500">
+                        {app.last_used
+                          ? new Date(app.last_used).toLocaleString("tr-TR")
+                          : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

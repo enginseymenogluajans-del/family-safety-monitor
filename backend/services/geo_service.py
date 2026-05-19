@@ -1,7 +1,8 @@
-﻿"""
+"""
 Geofencing Servisi
 GÃ¼venli bÃ¶lge tanÄ±mla, konum kontrolÃ¼ yap, uyarÄ± Ã¼ret.
 """
+from __future__ import annotations
 import math
 from typing import Optional
 import uuid

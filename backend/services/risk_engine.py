@@ -2,6 +2,7 @@
 Risk Skoru Motoru
 Tüm olayları toplar, günlük risk raporu üretir, ebeveyne bildirim gönderir.
 """
+from __future__ import annotations
 from datetime import datetime, timezone, timedelta, date
 from typing import Optional
 from collections import defaultdict

@@ -149,6 +149,17 @@ def init_db() -> None:
                 hit_at      TEXT DEFAULT (datetime('now'))
             );
 
+            CREATE TABLE IF NOT EXISTS android_device_info (
+                profile_id   TEXT PRIMARY KEY,
+                model        TEXT,
+                manufacturer TEXT,
+                os_version   TEXT,
+                battery      INTEGER,
+                is_charging  INTEGER DEFAULT 0,
+                wifi_ssid    TEXT,
+                last_seen    TEXT DEFAULT (datetime('now'))
+            );
+
             CREATE TABLE IF NOT EXISTS android_notifications (
                 id               INTEGER PRIMARY KEY AUTOINCREMENT,
                 profile_id       TEXT    NOT NULL,
@@ -501,6 +512,42 @@ def get_android_notifications(profile_id: str, limit: int = 200,
             (profile_id, limit),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def save_android_device_info(profile_id: str, info: dict) -> None:
+    """Android cihaz bilgilerini upsert eder."""
+    with _conn() as db:
+        db.execute(
+            """INSERT INTO android_device_info
+               (profile_id, model, manufacturer, os_version, battery, is_charging, wifi_ssid, last_seen)
+               VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+               ON CONFLICT(profile_id) DO UPDATE SET
+                 model=excluded.model,
+                 manufacturer=excluded.manufacturer,
+                 os_version=excluded.os_version,
+                 battery=excluded.battery,
+                 is_charging=excluded.is_charging,
+                 wifi_ssid=excluded.wifi_ssid,
+                 last_seen=excluded.last_seen""",
+            (
+                profile_id,
+                info.get("model"),
+                info.get("manufacturer"),
+                info.get("os_version"),
+                info.get("battery"),
+                1 if info.get("is_charging") else 0,
+                info.get("wifi_ssid"),
+            ),
+        )
+
+
+def get_android_device_info(profile_id: str):
+    """Son kaydedilen Android cihaz bilgisini döndürür."""
+    with _conn() as db:
+        row = db.execute(
+            "SELECT * FROM android_device_info WHERE profile_id=?", (profile_id,)
+        ).fetchone()
+    return dict(row) if row else None
 
 
 # ── Klavye Takibi ────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@
 Uygulama Tespiti Servisi
 iCloud Drive ve yerel backup manifest'ten uygulamaları tespit eder.
 """
+from __future__ import annotations
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
