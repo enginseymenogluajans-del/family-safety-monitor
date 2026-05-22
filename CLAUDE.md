@@ -19,6 +19,18 @@
 - When debugging auth/API issues, FIRST verify which machine is running each service
 - File edits on Mac do NOT automatically reach the Windows backend - confirm sync or deployment before re-testing
 
+## Windows Ortam Kuralları
+
+- Bu proje **Windows'ta çalışıyor** — Linux/Mac komutları kullanma
+- `mkdir -p` yerine `mkdir` kullan (PowerShell: `New-Item -ItemType Directory -Force`)
+- `rm -rf` yerine `Remove-Item -Recurse -Force` kullan
+- Python sanal ortam aktifleştirme: `.\.venv\Scripts\activate` (Linux'taki `source .venv/bin/activate` değil)
+- Path ayırıcısı: backslash `\` kullan (`/` değil) — örn. `backend\main.py`
+- **Interactive terminal başlatma** — dev server, `expo start`, `uvicorn --reload` gibi uzun süren komutları Claude çalıştırmaz; kullanıcıya komutu ver
+- PowerShell'de `&&` çalışmaz — `;` veya `if ($?) { ... }` kullan
+- `2>/dev/null` PowerShell'de çalışmaz — `2>$null` kullan
+- Ortam değişkeni okuma: `$env:VARIABLE_NAME` (bash'taki `$VARIABLE_NAME` değil)
+
 ## Debugging Checklist
 
 - For 401/auth errors: check env vars and API keys on BOTH client and server machines

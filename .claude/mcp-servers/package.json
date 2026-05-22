@@ -1,0 +1,9 @@
+{
+  "name": "family-safety-mcp-server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}

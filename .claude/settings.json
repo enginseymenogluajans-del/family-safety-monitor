@@ -82,6 +82,33 @@
             "command": "rsync -az ./backend/ user@windows:/backend/ 2>/dev/null || true"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);const f=(j.tool_input&&j.tool_input.file_path)||(j.tool_response&&j.tool_response.filePath);if(f&&/\\.kt$/.test(f))console.log('REBUILD REQUIRED: Kotlin dosyasi degisti. cd android-agent && gradlew assembleDebug calistirin.')}catch(e){}})\" 2>/dev/null || true"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);const f=(j.tool_input&&j.tool_input.file_path)||(j.tool_response&&j.tool_response.filePath);if(f&&/main\\.py$/.test(f))console.log('BACKEND RESTART REQUIRED: backend/main.py degisti. .venv/Scripts/uvicorn main:app --host 0.0.0.0 --port 8000 --reload')}catch(e){}})\" 2>/dev/null || true"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);const cmd=(j.tool_input&&j.tool_input.command)||'';const exit=(j.tool_response&&j.tool_response.exit_code);if(cmd&&exit!==undefined&&exit!==0)console.log('[Bash FAIL exit='+exit+'] '+cmd.substring(0,80))}catch(e){}})\" 2>/dev/null || true"
+          }
+        ]
       }
     ]
   }

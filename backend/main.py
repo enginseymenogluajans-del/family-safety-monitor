@@ -237,11 +237,17 @@ async def health():
             webrtc_ok = r.status_code == 200
     except Exception:
         pass
+    icloud_ok = any(p.connected for p in _profiles.values())
+    android_ok = len(_mobile_connections) > 0
     return {
         "status": "ok",
         "profiles": len(_profiles),
-        "whatsapp_agent": wa_ok,
-        "webrtc_server": webrtc_ok,
+        "services": {
+            "icloud": icloud_ok,
+            "whatsapp": wa_ok,
+            "android": android_ok,
+            "signal_server": webrtc_ok,
+        },
     }
 
 

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "family-safety-backend": {
+      "command": "node",
+      "args": [".claude/mcp-servers/backend-health.js"],
+      "env": {
+        "BACKEND_URL": "http://localhost:8000"
+      }
+    }
+  }
+}
