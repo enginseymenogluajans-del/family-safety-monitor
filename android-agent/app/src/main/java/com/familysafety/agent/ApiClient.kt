@@ -17,6 +17,7 @@ object ApiClient {
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("X-API-Key", Config.API_KEY)
             conn.doOutput = true
             conn.connectTimeout = 5000
             conn.readTimeout = 5000

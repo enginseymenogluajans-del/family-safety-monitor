@@ -1,0 +1,13 @@
+{
+  "name": "peerjs-server",
+  "version": "1.0.0",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "peer": "1.0.2",
+    "express": "^5.2.1",
+    "cors": "^2.8.6"
+  }
+}

@@ -70,12 +70,12 @@ class MainActivity : AppCompatActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == SCREEN_CAPTURE_REQUEST_CODE && resultCode == Activity.RESULT_OK && data != null) {
-            val projection = projectionManager.getMediaProjection(resultCode, data)
-            ScreenshotHelper.setMediaProjection(projection)
-            ScreenStreamManager.setMediaProjection(projection)
-            
-            // Servisi Başlat
-            val serviceIntent = Intent(this, MainService::class.java)
+            // Android 14+: startForeground(MEDIA_PROJECTION type) çağrısı getMediaProjection()'dan ÖNCE
+            // olmalı. Token'ı servise iletiyoruz; servis önce startForeground, sonra getMediaProjection çağırır.
+            val serviceIntent = Intent(this, MainService::class.java).apply {
+                putExtra("resultCode", resultCode)
+                putExtra("data", data)
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(serviceIntent)
             } else {

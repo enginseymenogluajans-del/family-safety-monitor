@@ -17,3 +17,5 @@ python-socketio
 aiofiles
 python-multipart
 eval_type_backport
+keyring
+keyrings.alt

@@ -1,5 +1,18 @@
 # Aile Güvenliği Paneli
 
+## Yarın Yapılacaklar
+
+- Android APK rebuild ve test (MediaProjection foreground service fix tamamlandı)
+- Logcat'te "Socket bağlanıyor..." logu kontrol et
+- Canlı ekran stream çalışıyor mu test et
+- Dashboard'daki diğer özellikleri aktifleştir
+
+## Referans Kaynaklar
+
+- **NotebookLM Deposu:** https://notebooklm.google.com/notebook/b713b88e-dd23-4922-a767-9d0e4c643eb2
+  - Uzaktan erişim teknikleri, WebRTC/socket.io çözümleri, canlı izleme implementasyonları
+  - NOT: Claude bu URL'e doğrudan erişemez — içerikleri bu dosyaya veya konuşmaya yapıştırarak kullan
+
 ## Environment Context
 
 - Backend runs on Windows machine; frontend/iOS development happens on Mac
@@ -188,7 +201,6 @@ family-safety-monitor/
 - [ ] Ekran kaydı / görüntüsü yakalama (Eyezy benzeri)
 - [ ] Screen Time API entegrasyonu
 
-
 ## API Endpoint'leri
 
 ### Profil Yönetimi
@@ -263,7 +275,7 @@ family-safety-monitor/
 cd family-safety-monitor/backend
 cp .env.example .env   # Düzenle
 pip install -r requirements.txt
-uvicorn main:app --host 127.0.0.1 --port 8000 --reload
+uvicorn main:socket_app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Dashboard: http://localhost:8000 | API docs: http://localhost:8000/docs

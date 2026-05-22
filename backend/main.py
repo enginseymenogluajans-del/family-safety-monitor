@@ -108,7 +108,8 @@ sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
 socket_app = socketio.ASGIApp(sio, other_asgi_app=app)
 
 # Mobil Cihaz Bağlantı Takibi
-_mobile_connections: dict[str, str] = {} # profile_id -> sid
+_mobile_connections: dict[str, str] = {}  # profile_id -> sid
+_live_frames: dict = {}  # profile_id -> {"frame": base64, "ts": float}
 
 db_service.init_db()
 
@@ -255,19 +256,52 @@ async def command_take_screenshot(profile_id: str):
     return {"status": "command_sent"}
 
 
+class LiveFrameRequest(BaseModel):
+    frame: str          # base64 JPEG
+    profileId: str = ""
+
+
+@app.post("/api/screenshot/{profile_id}")
+async def post_live_frame(profile_id: str, req: LiveFrameRequest):
+    """Android'den gelen canlı ekran karesini bellekte saklar ve yayınlar."""
+    _require_profile(profile_id)
+    import time as _time
+    pid = req.profileId or profile_id
+    _live_frames[pid] = {"frame": req.frame, "ts": _time.time()}
+    await sio.emit("screen_frame", {"profileId": pid, "frame": req.frame, "ts": int(_time.time() * 1000)})
+    return {"ok": True}
+
+
+@app.get("/api/screenshot/{profile_id}/live")
+async def get_live_frame(profile_id: str):
+    """Son canlı ekran karesini döndürür (polling fallback)."""
+    _require_profile(profile_id)
+    data = _live_frames.get(profile_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Henüz kare alınmadı")
+    return {"frame": data["frame"], "profileId": profile_id, "ts": data["ts"]}
+
+
 from fastapi import UploadFile, File, Form
 
 @app.post("/upload-screenshot")
 async def upload_screenshot(profile_id: str = Form(...), image: UploadFile = File(...)):
     filename = f"{profile_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
     filepath = SCREENSHOTS_DIR / filename
-    
+
+    content = await image.read()
     async with aiofiles.open(filepath, 'wb') as out_file:
-        content = await image.read()
         await out_file.write(content)
-    
-    url = f"/screenshots/{filename}"
+
+    # Supabase Storage'a yükle; başarısız olursa yerel URL kullan
+    storage_url = await supabase_heartbeat.upload_screenshot_to_storage(
+        profile_id, content, filename
+    )
+    url = storage_url if storage_url else f"/screenshots/{filename}"
+
+    # Socket.io: canlı frontend'lere bildir
     await sio.emit("new_screenshot", {"profileId": profile_id, "url": url})
+    # Supabase live_screenshots tablosuna yaz → Realtime tetikler
     await supabase_heartbeat.push_screenshot(profile_id, url)
     return {"url": url}
 
@@ -296,23 +330,31 @@ async def connect(sid, environ):
     profile_id = None
     if "profileId=" in query:
         profile_id = query.split("profileId=")[1].split("&")[0]
-    
+
     if profile_id:
         _mobile_connections[profile_id] = sid
         print(f"[SOCKET] Mobil cihaz bağlandı: {profile_id} (SID: {sid})")
+        # Supabase — bağlantı geldiğinde agent_active=True, last_seen güncelle
+        asyncio.create_task(supabase_heartbeat.push_heartbeat(profile_id))
 
 @sio.on("disconnect")
 async def disconnect(sid):
     for pid, connected_sid in list(_mobile_connections.items()):
         if connected_sid == sid:
             del _mobile_connections[pid]
+            # Supabase — bağlantı kesildiğinde agent_active=False
+            asyncio.create_task(supabase_heartbeat.push_heartbeat(pid, extra={"agent_active": False}))
             break
 
 @sio.on("screen_frame")
 async def handle_screen_frame(sid, data):
     """Android'den gelen ekran karelerini tüm dashboard istemcilerine yayınlar."""
-    pid = data.get("profileId") if isinstance(data, dict) else None
-    await sio.emit("screen_frame", data)   # broadcast to all frontend clients
+    if isinstance(data, dict):
+        pid = data.get("profileId")
+        if pid and data.get("frame"):
+            import time as _time
+            _live_frames[pid] = {"frame": data["frame"], "ts": _time.time()}
+    await sio.emit("screen_frame", data)
 
 
 @sio.on("request_screen_stream")
@@ -340,6 +382,42 @@ async def handle_remote_click(sid, data):
     mobile_sid = _mobile_connections.get(pid)
     if mobile_sid:
         await sio.emit("remote_click", data, to=mobile_sid)
+
+
+@sio.on("camera_frame")
+async def handle_camera_frame(sid, data):
+    """Android'den gelen kamera karelerini tüm dashboard istemcilerine yayınlar."""
+    await sio.emit("camera_frame", data)
+
+
+@sio.on("snapshot")
+async def handle_snapshot_event(sid, data):
+    """Android'den gelen tek kare snapshot'ı dashboard'a iletir."""
+    await sio.emit("snapshot", data)
+
+
+@sio.on("command")
+async def handle_command(sid, data):
+    """Dashboard'dan gelen canlı kontrol komutunu Android'e iletir."""
+    if not isinstance(data, dict):
+        return
+    pid = data.get("profileId", "default")
+    mobile_sid = _mobile_connections.get(pid)
+    if not mobile_sid:
+        await sio.emit("command_error", {"error": f"Cihaz bağlı değil: {pid}"}, to=sid)
+        return
+    cmd_type = data.get("type", "")
+    if cmd_type == "screen":
+        await sio.emit("start_screen_stream", {}, to=mobile_sid)
+    elif cmd_type == "camera":
+        await sio.emit("start_camera_stream", {}, to=mobile_sid)
+    elif cmd_type == "stop":
+        await sio.emit("stop_screen_stream", {}, to=mobile_sid)
+        await sio.emit("stop_camera_stream", {}, to=mobile_sid)
+    elif cmd_type == "photo":
+        await sio.emit("take_screenshot", {}, to=mobile_sid)
+    elif cmd_type == "audio":
+        pass  # gelecek sürümde
 
 
 @sio.on("register")
@@ -500,6 +578,10 @@ async def post_location(profile_id: str, req: DeviceLocationRequest):
                 asyncio.create_task(asyncio.to_thread(
                     notifier.notify_geofence_exit, cfg, alert, _profiles[profile_id].name
                 ))
+    # Supabase Realtime — gps_logs tablosuna anlık konum gönder
+    asyncio.create_task(supabase_heartbeat.push_location(
+        profile_id, req.lat, req.lng, req.accuracy, ts
+    ))
     return {"ok": True, "in_safe_zone": in_zone, "zone_name": zone_name}
 
 
@@ -1306,6 +1388,8 @@ async def receive_android_notification(profile_id: str, body: dict):
             risk_engine._SCORE_TABLE.get("deleted_message", 20),
             {"package": package, "title": title, "text": text},
         )
+    # Supabase Realtime — device_status son bildirim alanını güncelle
+    asyncio.create_task(supabase_heartbeat.push_android_notification(profile_id, body))
     return {"status": "saved"}
 
 
@@ -1373,6 +1457,13 @@ async def register_android_device(profile_id: str, body: dict):
     """Android ajan cihaz bilgilerini kaydeder (model, os, battery, wifi)."""
     _require_profile(profile_id)
     db_service.save_android_device_info(profile_id, body)
+    # Supabase Realtime — cihaz bilgilerini device_status tablosuna yaz
+    asyncio.create_task(supabase_heartbeat.push_heartbeat(profile_id, extra={
+        "model": body.get("model", ""),
+        "os_version": body.get("os_version", ""),
+        "battery_level": body.get("battery_level", 100),
+        "is_charging": body.get("is_charging", False),
+    }))
     return {"status": "saved"}
 
 
@@ -1581,7 +1672,7 @@ async def get_whatsapp_qr():
     """WhatsApp Agent'tan QR kod veya bağlantı durumunu döndürür."""
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            r = await client.get("http://localhost:3001/api/qr")
+            r = await client.get(f"{_WA_AGENT}/api/qr")
             return r.json()
     except Exception:
         return {"connected": False, "qr_base64": None, "waiting": False,
@@ -1637,4 +1728,4 @@ def _require_profile(profile_id: str) -> Profile:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:socket_app", host="0.0.0.0", port=8000, reload=True)

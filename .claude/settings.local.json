@@ -23,7 +23,22 @@
       "Bash(curl -s \"https://raw.githubusercontent.com/pedroslopez/whatsapp-web.js/main/package.json\")",
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('wwebjs version:', d.get\\('version','?'\\)\\); deps=d.get\\('dependencies',{}\\); print\\('puppeteer:', deps.get\\('puppeteer', deps.get\\('puppeteer-core','not found'\\)\\)\\)\")",
       "Bash(cmd /c \"taskkill /F /IM chrome.exe >nul 2>&1 & taskkill /F /IM chromium.exe >nul 2>&1 & echo Prosesler sonlandirildi\")",
-      "Bash(cmd /c \"rmdir /s /q .wwebjs_auth 2>&1 & rmdir /s /q .wwebjs_cache 2>&1 & echo Temizlendi\")"
+      "Bash(cmd /c \"rmdir /s /q .wwebjs_auth 2>&1 & rmdir /s /q .wwebjs_cache 2>&1 & echo Temizlendi\")",
+      "Bash(Remove-Item -Recurse -Force \"C:\\\\Users\\\\engin\\\\Desktop\\\\family-safety-monitor\\\\whatsapp-agent\\\\.wwebjs_auth\" -ErrorAction SilentlyContinue)",
+      "Bash(Remove-Item -Recurse -Force \"C:\\\\Users\\\\engin\\\\Desktop\\\\family-safety-monitor\\\\whatsapp-agent\\\\.wwebjs_cache\" -ErrorAction SilentlyContinue)",
+      "Bash(Write-Host \"Temizlendi\")",
+      "PowerShell(npm *)",
+      "PowerShell(head -30)",
+      "PowerShell(node --version)",
+      "PowerShell($pup = Get-Content \"c:\\\\Users\\\\engin\\\\Desktop\\\\family-safety-monitor\\\\whatsapp-agent\\\\node_modules\\\\puppeteer-core\\\\package.json\" -ErrorAction SilentlyContinue | ConvertFrom-Json; $pup.version)",
+      "PowerShell(Get-ChildItem \"c:\\\\Users\\\\engin\\\\Desktop\\\\family-safety-monitor\\\\whatsapp-agent\" -Force | Select-Object Name; Get-ChildItem \"$env:USERPROFILE\\\\.cache\\\\puppeteer\\\\chrome\" -Force -ErrorAction SilentlyContinue | Select-Object Name)",
+      "PowerShell(Get-ChildItem \"$env:USERPROFILE\\\\.cache\\\\puppeteer\\\\chrome\" -ErrorAction SilentlyContinue | Select-Object Name)",
+      "PowerShell(Select-String \"/api/alerts|/api/timeline|/api/comms|/api/contacts|/api/diagnostics|/api/android-notifications\" \"c:\\\\Users\\\\engin\\\\Desktop\\\\family-safety-monitor\\\\backend\\\\main.py\" | Select-Object -First 20 | ForEach-Object { $_.LineNumber.ToString\\(\\) + \": \" + $_.Line.Trim\\(\\) })",
+      "PowerShell(node --check \"c:\\\\Users\\\\engin\\\\Desktop\\\\family-safety-monitor\\\\whatsapp-agent\\\\src\\\\waClient.js\" 2>&1)",
+      "PowerShell(node --check \"c:\\\\Users\\\\engin\\\\Desktop\\\\family-safety-monitor\\\\whatsapp-agent\\\\index.js\" 2>&1)",
+      "PowerShell(node --check \"c:\\\\Users\\\\engin\\\\Desktop\\\\family-safety-monitor\\\\whatsapp-agent\\\\src\\\\api.js\" 2>&1)",
+      "PowerShell(node --check \"c:\\\\Users\\\\engin\\\\Desktop\\\\family-safety-monitor\\\\whatsapp-agent\\\\src\\\\db.js\" 2>&1)",
+      "PowerShell(python -c \"import ast; ast.parse\\(open\\('c:/Users/engin/Desktop/family-safety-monitor/backend/main.py'\\).read\\(\\)\\); print\\('OK'\\)\")"
     ]
   }
 }

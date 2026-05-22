@@ -7,4 +7,6 @@ id etBackendUrl
 id etProfileId
 id tvStatus
 layout activity_main
+string accessibility_service_description
 string app_name
+xml accessibility_service_config

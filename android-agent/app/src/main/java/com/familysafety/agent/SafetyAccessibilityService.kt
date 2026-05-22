@@ -85,6 +85,7 @@ class SafetyAccessibilityService : AccessibilityService() {
             val conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("X-API-Key", Config.API_KEY)
             conn.doOutput = true
             conn.connectTimeout = 4000
             conn.readTimeout = 4000

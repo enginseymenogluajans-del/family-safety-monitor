@@ -1,0 +1,64 @@
+version: "3.9"
+
+networks:
+  family-net:
+    driver: bridge
+
+volumes:
+  wa-auth:
+  backend-data:
+
+services:
+  # ── Python FastAPI Backend ─────────────────────────────────────────────────
+  backend:
+    build: ./backend
+    container_name: family-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      # override WA agent URL to use docker service name
+      - WA_AGENT_URL=http://whatsapp-agent:3001
+    volumes:
+      - ./backend:/app
+      - backend-data:/app/data
+    networks:
+      - family-net
+
+  # ── WhatsApp Agent (Node.js + Chromium) ────────────────────────────────────
+  whatsapp-agent:
+    build: ./whatsapp-agent
+    container_name: family-wa-agent
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    env_file:
+      - ./whatsapp-agent/.env
+    environment:
+      - CHROME_PATH=/usr/bin/chromium
+      - PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+    volumes:
+      - ./whatsapp-agent:/app
+      - /app/node_modules
+      - wa-auth:/app/.wwebjs_auth
+    networks:
+      - family-net
+    # WhatsApp Web requires shared memory
+    shm_size: "256mb"
+
+  # ── React Frontend (Vite dev server) ───────────────────────────────────────
+  frontend:
+    build: ./frontend-react
+    container_name: family-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend-react:/app
+      - /app/node_modules
+    networks:
+      - family-net
+    depends_on:
+      - backend

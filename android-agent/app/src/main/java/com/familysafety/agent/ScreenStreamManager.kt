@@ -10,6 +10,12 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.util.Base64
 import android.util.Log
+import okhttp3.Callback
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 
@@ -21,8 +27,12 @@ import java.io.ByteArrayOutputStream
 object ScreenStreamManager {
 
     private const val TAG = "ScreenStreamManager"
-    private const val FRAME_INTERVAL_MS = 400L   // ~2.5 FPS
-    private const val JPEG_QUALITY = 45           // Bant genişliği tasarrufu
+    private const val FRAME_INTERVAL_MS = 400L   // ~2.5 FPS socket.io
+    private const val JPEG_QUALITY = 45
+    private const val HTTP_POST_EVERY_N = 6       // Her 6. kare HTTP'ye (~2.4s)
+
+    private val httpClient = OkHttpClient()
+    private var httpFrameCounter = 0
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -36,6 +46,8 @@ object ScreenStreamManager {
     fun setMediaProjection(projection: MediaProjection) {
         this.mediaProjection = projection
     }
+
+    fun isProjectionReady(): Boolean = mediaProjection != null
 
     // ── Akış Başlat ───────────────────────────────────────────────────────────
 
@@ -117,9 +129,41 @@ object ScreenStreamManager {
                 put("frame", b64)
                 put("ts", System.currentTimeMillis())
             }
+            // Backend (8000) üzerinden dashboard'a ilet — socket.io
             SocketManager.emit("screen_frame", payload)
+
+            // HTTP fallback — her HTTP_POST_EVERY_N karede bir POST et
+            httpFrameCounter++
+            if (httpFrameCounter >= HTTP_POST_EVERY_N) {
+                httpFrameCounter = 0
+                postFrameHttp(b64)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Kare yakalanamadı: ${e.message}")
+        }
+    }
+
+    private fun postFrameHttp(b64: String) {
+        try {
+            val body = JSONObject().apply {
+                put("frame", b64)
+                put("profileId", Config.profileId)
+            }.toString().toRequestBody("application/json".toMediaTypeOrNull())
+            val request = Request.Builder()
+                .url("${Config.backendUrl}/api/screenshot/${Config.profileId}")
+                .addHeader("X-API-Key", Config.API_KEY)
+                .post(body)
+                .build()
+            httpClient.newCall(request).enqueue(object : Callback {
+                override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+                    Log.w(TAG, "HTTP frame upload başarısız: ${e.message}")
+                }
+                override fun onResponse(call: okhttp3.Call, response: Response) {
+                    response.close()
+                }
+            })
+        } catch (e: Exception) {
+            Log.e(TAG, "HTTP frame upload hatası: ${e.message}")
         }
     }
 }

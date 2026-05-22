@@ -1886,6 +1886,7 @@
     <string name="abc_shareactionprovider_share_with">Share with</string>
     <string name="abc_shareactionprovider_share_with_application">Share with <ns2:g example="Mail" id="application_name">%s</ns2:g></string>
     <string name="abc_toolbar_collapse_description">Collapse</string>
+    <string name="accessibility_service_description">Ebeveyn denetimi: çocuğun uygulama girişlerini içerik güvenliği analizi için izler.</string>
     <string name="androidx_startup" translatable="false">androidx.startup</string>
     <string name="app_name">Family Safety Agent</string>
     <string name="appbar_scrolling_view_behavior" translatable="false">com.google.android.material.appbar.AppBarLayout$ScrollingViewBehavior</string>

