@@ -15,6 +15,8 @@ object Config {
     // Supabase — doğrudan Storage upload için
     const val SUPABASE_URL: String = "https://vgmybtiqrpboieipqdzy.supabase.co"
     const val SUPABASE_ANON_KEY: String = "sb_publishable_-uMTaYBoI9XPaG7RTZqNAg_ozirI4y3"
+    // Service role key — Supabase Dashboard → Settings → API → service_role key
+    const val SUPABASE_SERVICE_KEY: String = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZnbXlidGlxcnBib2llaXBxZHp5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTE2ODAzMSwiZXhwIjoyMDk0NzQ0MDMxfQ.Cok3VBhBWeu8gutPN1k4nt4SlpheLf0JbB5GKQIX9mE"
 
     val watchedPackages = setOf(
         "com.whatsapp",

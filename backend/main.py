@@ -372,6 +372,12 @@ async def handle_screen_frame(sid, data):
     await sio.emit("screen_frame", data)
 
 
+@sio.on("screen_stream_error")
+async def handle_screen_stream_error(sid, data):
+    """Android ekran izni yoksa frontend'e hata ilet."""
+    await sio.emit("screen_stream_error", data)
+
+
 @sio.on("request_screen_stream")
 async def handle_request_screen_stream(sid, data):
     """Frontend'den gelen akış başlatma isteğini mobil cihaza iletir."""

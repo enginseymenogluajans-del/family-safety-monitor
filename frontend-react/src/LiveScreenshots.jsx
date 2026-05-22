@@ -23,6 +23,7 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
   // ── Canlı Akış State ──────────────────────────────────────────────────────
   const [streaming, setStreaming] = useState(false);
   const [liveFrame, setLiveFrame] = useState(null); // base64 JPEG
+  const [streamError, setStreamError] = useState(null);
   const [clickMode, setClickMode] = useState(false);
   const liveImgRef = useRef(null);
 
@@ -41,7 +42,14 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
     newSocket.on("screen_frame", (data) => {
       if (data.profileId === profileId && data.frame) {
         setLiveFrame(`data:image/jpeg;base64,${data.frame}`);
+        setStreamError(null);
       }
+    });
+
+    // Ekran izni hatası — Android'den gelir
+    newSocket.on("screen_stream_error", (data) => {
+      setStreamError(data?.error || "Ekran akışı başlatılamadı.");
+      setStreaming(false);
     });
 
     // Supabase Realtime — live_screenshots tablosu
@@ -81,6 +89,7 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
     }
 
     return () => {
+      newSocket.emit("stop_screen_stream", { profileId });
       newSocket.close();
       if (supabaseChannel) supabase.removeChannel(supabaseChannel);
     };
@@ -117,12 +126,36 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
     }
   };
 
+  // ── Supabase Realtime Broadcast — "kare hazır" sinyali ───────────────────
+  useEffect(() => {
+    if (!streaming) return;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    if (!supabaseUrl || supabaseUrl === "https://your-project-id.supabase.co")
+      return;
+
+    const channel = supabase
+      .channel(`screen-${profileId}`)
+      .on("broadcast", { event: "frame" }, (msg) => {
+        const ts = msg.payload?.ts || Date.now();
+        setLiveFrame(
+          `${supabaseUrl}/storage/v1/object/public/screenshots/${profileId}/live.jpg?t=${ts}`,
+        );
+        setStreamError(null);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [streaming, profileId]);
+
   // ── Canlı Akış Kontrol ────────────────────────────────────────────────────
   const startStream = () => {
     if (!socket) return;
     socket.emit("request_screen_stream", { profileId });
     setStreaming(true);
     setLiveFrame(null);
+    setStreamError(null);
   };
 
   const stopStream = () => {
@@ -232,7 +265,12 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
               className="relative flex items-center justify-center bg-zinc-950 min-h-[400px]"
               style={{ cursor: clickMode ? "crosshair" : "default" }}
             >
-              {liveFrame ? (
+              {streamError ? (
+                <div className="flex flex-col items-center gap-3 text-red-400 px-6 text-center">
+                  <p className="text-xs font-bold">Ekran Akışı Hatası</p>
+                  <p className="text-[11px] text-red-300">{streamError}</p>
+                </div>
+              ) : liveFrame ? (
                 <img
                   ref={liveImgRef}
                   src={liveFrame}

@@ -63,6 +63,15 @@ object SocketManager {
             socket?.on("start_screen_stream") {
                 Log.d(TAG, "Komut: start_screen_stream")
                 mainHandler.post {
+                    if (!ScreenStreamManager.isProjectionReady()) {
+                        Log.e(TAG, "start_screen_stream: MediaProjection null — kullanıcı izin vermeli")
+                        val err = JSONObject().apply {
+                            put("profileId", Config.profileId)
+                            put("error", "Ekran izni eksik. Android uygulamasını açın ve 'İzlemeyi Başlat' butonuna basın.")
+                        }
+                        socket?.emit("screen_stream_error", err)
+                        return@post
+                    }
                     val m = context.resources.displayMetrics
                     ScreenStreamManager.startStreaming(m.widthPixels, m.heightPixels, m.densityDpi)
                 }

@@ -27,12 +27,10 @@ import java.io.ByteArrayOutputStream
 object ScreenStreamManager {
 
     private const val TAG = "ScreenStreamManager"
-    private const val FRAME_INTERVAL_MS = 400L   // ~2.5 FPS socket.io
+    private const val FRAME_INTERVAL_MS = 500L   // 2 FPS — Supabase direkt upload
     private const val JPEG_QUALITY = 45
-    private const val HTTP_POST_EVERY_N = 6       // Her 6. kare HTTP'ye (~2.4s)
 
     private val httpClient = OkHttpClient()
-    private var httpFrameCounter = 0
 
     private var mediaProjection: MediaProjection? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -56,7 +54,10 @@ object ScreenStreamManager {
             Log.e(TAG, "MediaProjection null — akış başlatılamıyor")
             return
         }
-        if (streaming) return
+        if (streaming) {
+            Log.w(TAG, "Akış zaten aktif — durdurup yeniden başlatılıyor")
+            stop()
+        }
         streaming = true
 
         handlerThread = HandlerThread("ScreenStream").also { it.start() }
@@ -123,47 +124,86 @@ object ScreenStreamManager {
             bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, stream)
             bitmap.recycle()
 
-            val b64 = Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
+            val jpegBytes = stream.toByteArray()
+
+            // Socket.io — lokal ağda hızlı fallback
+            val b64 = Base64.encodeToString(jpegBytes, Base64.NO_WRAP)
             val payload = JSONObject().apply {
                 put("profileId", Config.profileId)
                 put("frame", b64)
                 put("ts", System.currentTimeMillis())
             }
-            // Backend (8000) üzerinden dashboard'a ilet — socket.io
             SocketManager.emit("screen_frame", payload)
 
-            // HTTP fallback — her HTTP_POST_EVERY_N karede bir POST et
-            httpFrameCounter++
-            if (httpFrameCounter >= HTTP_POST_EVERY_N) {
-                httpFrameCounter = 0
-                postFrameHttp(b64)
-            }
+            // Supabase Storage — direkt upload + Realtime broadcast
+            uploadToSupabase(jpegBytes)
         } catch (e: Exception) {
             Log.e(TAG, "Kare yakalanamadı: ${e.message}")
         }
     }
 
-    private fun postFrameHttp(b64: String) {
+    // ── Supabase Storage — direkt upload (üzerine yaz) ───────────────────────
+
+    private fun uploadToSupabase(jpegBytes: ByteArray) {
         try {
-            val body = JSONObject().apply {
-                put("frame", b64)
-                put("profileId", Config.profileId)
-            }.toString().toRequestBody("application/json".toMediaTypeOrNull())
+            val path = "${Config.profileId}/live.jpg"
+            val body = jpegBytes.toRequestBody("image/jpeg".toMediaTypeOrNull())
             val request = Request.Builder()
-                .url("${Config.backendUrl}/api/screenshot/${Config.profileId}")
-                .addHeader("X-API-Key", Config.API_KEY)
+                .url("${Config.SUPABASE_URL}/storage/v1/object/screenshots/$path")
+                .addHeader("apikey", Config.SUPABASE_SERVICE_KEY)
+                .addHeader("Authorization", "Bearer ${Config.SUPABASE_SERVICE_KEY}")
+                .addHeader("x-upsert", "true")
+                .put(body)
+                .build()
+            httpClient.newCall(request).enqueue(object : Callback {
+                override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+                    Log.w(TAG, "Supabase upload hatası: ${e.message}")
+                }
+                override fun onResponse(call: okhttp3.Call, response: Response) {
+                    response.close()
+                    if (response.isSuccessful) broadcastToRealtime()
+                }
+            })
+        } catch (e: Exception) {
+            Log.e(TAG, "Supabase upload exception: ${e.message}")
+        }
+    }
+
+    // ── Supabase Realtime Broadcast — dashboard'a "kare hazır" sinyali ───────
+
+    private fun broadcastToRealtime() {
+        try {
+            val messages = org.json.JSONArray().apply {
+                put(JSONObject().apply {
+                    put("topic", "realtime:screen-${Config.profileId}")
+                    put("event", "broadcast")
+                    put("payload", JSONObject().apply {
+                        put("event", "frame")
+                        put("payload", JSONObject().apply {
+                            put("ts", System.currentTimeMillis())
+                            put("profileId", Config.profileId)
+                        })
+                    })
+                })
+            }
+            val body = JSONObject().apply { put("messages", messages) }
+                .toString().toRequestBody("application/json".toMediaTypeOrNull())
+            val request = Request.Builder()
+                .url("${Config.SUPABASE_URL}/realtime/v1/api/broadcast")
+                .addHeader("apikey", Config.SUPABASE_SERVICE_KEY)
+                .addHeader("Authorization", "Bearer ${Config.SUPABASE_SERVICE_KEY}")
                 .post(body)
                 .build()
             httpClient.newCall(request).enqueue(object : Callback {
                 override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
-                    Log.w(TAG, "HTTP frame upload başarısız: ${e.message}")
+                    Log.w(TAG, "Realtime broadcast hatası: ${e.message}")
                 }
                 override fun onResponse(call: okhttp3.Call, response: Response) {
                     response.close()
                 }
             })
         } catch (e: Exception) {
-            Log.e(TAG, "HTTP frame upload hatası: ${e.message}")
+            Log.e(TAG, "Realtime broadcast exception: ${e.message}")
         }
     }
 }
