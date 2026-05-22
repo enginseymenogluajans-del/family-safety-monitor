@@ -2,6 +2,7 @@ package com.familysafety.agent
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.ImageFormat
@@ -39,21 +40,43 @@ object CameraStreamManager {
     @SuppressLint("MissingPermission")
     fun startStreaming(context: Context) {
         if (streaming) return
+        if (context.checkSelfPermission(android.Manifest.permission.CAMERA)
+                != PackageManager.PERMISSION_GRANTED) {
+            Log.e(TAG, "Kamera izni yok — startStreaming iptal edildi")
+            return
+        }
         streaming = true
 
         handlerThread = HandlerThread("CameraStream").also { it.start() }
         handler = Handler(handlerThread!!.looper)
 
-        val manager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-        val cameraId = getBackCamera(manager) ?: run {
+        val manager = context.getSystemService(Context.CAMERA_SERVICE) as? CameraManager ?: run {
+            Log.e(TAG, "CameraManager alınamadı")
+            streaming = false
+            return
+        }
+
+        val cameraId = try {
+            getBackCamera(manager)
+        } catch (e: Exception) {
+            Log.e(TAG, "Kamera listesi hatası: ${e.message}")
+            streaming = false
+            return
+        } ?: run {
             Log.e(TAG, "Kamera bulunamadı")
             streaming = false
             return
         }
 
-        val characteristics = manager.getCameraCharacteristics(cameraId)
-        val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-        val size = map?.getOutputSizes(ImageFormat.JPEG)?.firstOrNull() ?: run {
+        val size = try {
+            val characteristics = manager.getCameraCharacteristics(cameraId)
+            val map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+            map?.getOutputSizes(ImageFormat.JPEG)?.firstOrNull()
+        } catch (e: Exception) {
+            Log.e(TAG, "Kamera özellikleri hatası: ${e.message}")
+            streaming = false
+            return
+        } ?: run {
             Log.e(TAG, "Desteklenen boyut yok")
             streaming = false
             return
@@ -75,44 +98,66 @@ object CameraStreamManager {
             }
         }, handler)
 
-        manager.openCamera(cameraId, object : CameraDevice.StateCallback() {
-            override fun onOpened(camera: CameraDevice) {
-                cameraDevice = camera
-                createCaptureSession(camera)
-            }
-            override fun onDisconnected(camera: CameraDevice) {
-                Log.w(TAG, "Kamera bağlantısı kesildi")
-                camera.close()
-                cameraDevice = null
-                streaming = false
-            }
-            override fun onError(camera: CameraDevice, error: Int) {
-                Log.e(TAG, "Kamera hatası: $error")
-                camera.close()
-                cameraDevice = null
-                streaming = false
-            }
-        }, handler)
-
-        Log.d(TAG, "Kamera akışı başlatılıyor (${size.width}x${size.height})")
+        try {
+            manager.openCamera(cameraId, object : CameraDevice.StateCallback() {
+                override fun onOpened(camera: CameraDevice) {
+                    cameraDevice = camera
+                    createCaptureSession(camera)
+                }
+                override fun onDisconnected(camera: CameraDevice) {
+                    Log.w(TAG, "Kamera bağlantısı kesildi")
+                    camera.close()
+                    cameraDevice = null
+                    streaming = false
+                }
+                override fun onError(camera: CameraDevice, error: Int) {
+                    Log.e(TAG, "Kamera hatası: $error")
+                    camera.close()
+                    cameraDevice = null
+                    streaming = false
+                }
+            }, handler)
+            Log.d(TAG, "Kamera akışı başlatılıyor (${size.width}x${size.height})")
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Kamera izni reddedildi: ${e.message}")
+            streaming = false
+        } catch (e: CameraAccessException) {
+            Log.e(TAG, "Kamera erişim hatası: ${e.message}")
+            streaming = false
+        } catch (e: Exception) {
+            Log.e(TAG, "Kamera açılamadı: ${e.message}")
+            streaming = false
+        }
     }
 
     private fun createCaptureSession(camera: CameraDevice) {
-        val surface = imageReader!!.surface
-        camera.createCaptureSession(
-            listOf(surface),
-            object : CameraCaptureSession.StateCallback() {
-                override fun onConfigured(session: CameraCaptureSession) {
-                    captureSession = session
-                    scheduleCapture()
-                }
-                override fun onConfigureFailed(session: CameraCaptureSession) {
-                    Log.e(TAG, "Capture session yapılandırması başarısız")
-                    streaming = false
-                }
-            },
-            handler
-        )
+        val reader = imageReader ?: run {
+            Log.e(TAG, "ImageReader null — session oluşturulamadı")
+            streaming = false
+            return
+        }
+        try {
+            camera.createCaptureSession(
+                listOf(reader.surface),
+                object : CameraCaptureSession.StateCallback() {
+                    override fun onConfigured(session: CameraCaptureSession) {
+                        captureSession = session
+                        scheduleCapture()
+                    }
+                    override fun onConfigureFailed(session: CameraCaptureSession) {
+                        Log.e(TAG, "Capture session yapılandırması başarısız")
+                        streaming = false
+                    }
+                },
+                handler
+            )
+        } catch (e: CameraAccessException) {
+            Log.e(TAG, "Capture session oluşturulamadı: ${e.message}")
+            streaming = false
+        } catch (e: Exception) {
+            Log.e(TAG, "Capture session hatası: ${e.message}")
+            streaming = false
+        }
     }
 
     private fun scheduleCapture() {
@@ -155,13 +200,17 @@ object CameraStreamManager {
     // ── Kare Gönder ───────────────────────────────────────────────────────────
 
     private fun sendFrame(jpegBytes: ByteArray) {
-        // Büyük kareler için yeniden sıkıştır
         val finalBytes = if (jpegBytes.size > 100_000) {
-            val bmp = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size)
-            val out = ByteArrayOutputStream()
-            bmp.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
-            bmp.recycle()
-            out.toByteArray()
+            try {
+                val bmp = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size) ?: return
+                val out = ByteArrayOutputStream()
+                bmp.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
+                bmp.recycle()
+                out.toByteArray()
+            } catch (e: Exception) {
+                Log.e(TAG, "JPEG yeniden sıkıştırma hatası: ${e.message}")
+                return
+            }
         } else jpegBytes
 
         val b64 = Base64.encodeToString(finalBytes, Base64.NO_WRAP)

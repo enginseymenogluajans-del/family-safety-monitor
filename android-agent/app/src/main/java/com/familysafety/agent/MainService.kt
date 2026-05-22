@@ -60,7 +60,15 @@ class MainService : Service() {
             .setCategory(Notification.CATEGORY_SERVICE)
             .build()
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            startForeground(
+                1, notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION or
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            )
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
                 1, notification,
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or

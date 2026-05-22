@@ -2560,6 +2560,7 @@ export const LiveControlView = () => {
   const frameTimerRef = useRef(null);
   const lastFrameTimeRef = useRef(0);
   const pollTimerRef = useRef(null);
+  const audioCtxRef = useRef(null);
 
   const downloadRecording = () => {
     if (recordingUrl) {
@@ -2732,6 +2733,49 @@ export const LiveControlView = () => {
       lastFrameTimeRef.current = Date.now();
     });
 
+    // Canlı mikrofon akışı (PCM 16-bit 16kHz base64 chunk)
+    socket.on("audio_frame", (payload) => {
+      if (!payload?.chunk) return;
+      try {
+        if (!audioCtxRef.current) {
+          audioCtxRef.current = new (
+            window.AudioContext || window.webkitAudioContext
+          )({
+            sampleRate: payload.sampleRate || 16000,
+          });
+        }
+        const ctx = audioCtxRef.current;
+        if (ctx.state === "suspended") ctx.resume();
+
+        const binary = atob(payload.chunk);
+        const pcmBytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++)
+          pcmBytes[i] = binary.charCodeAt(i);
+
+        const numSamples = pcmBytes.length / 2;
+        const float32 = new Float32Array(numSamples);
+        const view = new DataView(pcmBytes.buffer);
+        for (let i = 0; i < numSamples; i++) {
+          float32[i] = view.getInt16(i * 2, true) / 32768.0;
+        }
+
+        const audioBuffer = ctx.createBuffer(
+          1,
+          numSamples,
+          payload.sampleRate || 16000,
+        );
+        audioBuffer.copyToChannel(float32, 0);
+        const source = ctx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(ctx.destination);
+        source.start();
+
+        setActiveStream((prev) => (prev !== "audio" ? "audio" : prev));
+      } catch (e) {
+        console.error("Audio playback hatası:", e);
+      }
+    });
+
     // FPS ölçümü — her saniye
     frameTimerRef.current = setInterval(() => {
       setFrameRate(frameCountRef.current);
@@ -2766,6 +2810,10 @@ export const LiveControlView = () => {
         if (prev) URL.revokeObjectURL(prev);
         return null;
       });
+      if (audioCtxRef.current) {
+        audioCtxRef.current.close();
+        audioCtxRef.current = null;
+      }
     };
   }, []);
 

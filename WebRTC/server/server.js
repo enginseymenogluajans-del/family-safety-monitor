@@ -65,6 +65,11 @@ const io = new Server(server, {
     origin: "*",
     methods: ["GET", "POST"],
   },
+  transports: ["websocket"],
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  upgradeTimeout: 30000,
+  allowUpgrades: false,
 });
 
 // ── Diagnostics store — en son cihaz durumu (socketId → payload) ──────────
@@ -91,8 +96,8 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("disconnect", () => {
-    console.log("❌ Ayrıldı:", socket.id);
+  socket.on("disconnect", (reason) => {
+    console.log("❌ Ayrıldı:", socket.id, "| Sebep:", reason);
     _diagnostics.delete(socket.id);
   });
 

