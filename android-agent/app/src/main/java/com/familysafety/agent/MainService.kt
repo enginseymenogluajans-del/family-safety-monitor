@@ -17,11 +17,18 @@ class MainService : Service() {
     override fun onCreate() {
         super.onCreate()
         startForegroundNotification()
-        Thread { SocketManager.connect(this) }.start()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d("MainService", "Service started")
+
+        // onCreate sadece bir kere çalışır — socket bağlantısını her onStartCommand'da kontrol et
+        if (!SocketManager.isSignalConnected()) {
+            Log.d("MainService", "Socket bağlı değil, bağlanıyor...")
+            Thread { SocketManager.connect(this) }.start()
+        } else {
+            Log.d("MainService", "Socket zaten bağlı")
+        }
 
         // MediaProjection token'ı MainActivity'den al
         val resultCode = intent?.getIntExtra("resultCode", -1) ?: -1

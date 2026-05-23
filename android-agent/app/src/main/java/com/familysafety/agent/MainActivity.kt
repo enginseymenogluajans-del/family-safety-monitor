@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
@@ -69,55 +70,61 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        Log.e("FSA", "MainActivity onCreate başladı")
+        try {
+            setContentView(R.layout.activity_main)
 
-        projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        tvStatus = findViewById(R.id.tvStatus)
+            projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            tvStatus = findViewById(R.id.tvStatus)
 
-        val etUrl     = findViewById<EditText>(R.id.etBackendUrl)
-        val etProfile = findViewById<EditText>(R.id.etProfileId)
-        val btnSave   = findViewById<Button>(R.id.btnSave)
-        val btnPerm   = findViewById<Button>(R.id.btnPermission)
-        val btnStart  = findViewById<Button>(R.id.btnStartService)
+            val etUrl     = findViewById<EditText>(R.id.etBackendUrl)
+            val etProfile = findViewById<EditText>(R.id.etProfileId)
+            val btnSave   = findViewById<Button>(R.id.btnSave)
+            val btnPerm   = findViewById<Button>(R.id.btnPermission)
+            val btnStart  = findViewById<Button>(R.id.btnStartService)
 
-        val prefs = getSharedPreferences("config", MODE_PRIVATE)
-        Config.backendUrl = prefs.getString("backend_url", Config.backendUrl) ?: Config.backendUrl
-        Config.profileId  = prefs.getString("profile_id",  Config.profileId)  ?: Config.profileId
+            val prefs = getSharedPreferences("config", MODE_PRIVATE)
+            Config.backendUrl = prefs.getString("backend_url", Config.backendUrl) ?: Config.backendUrl
+            Config.profileId  = prefs.getString("profile_id",  Config.profileId)  ?: Config.profileId
 
-        etUrl.setText(Config.backendUrl)
-        etProfile.setText(Config.profileId)
+            etUrl.setText(Config.backendUrl)
+            etProfile.setText(Config.profileId)
 
-        btnSave.setOnClickListener {
-            Config.backendUrl = etUrl.text.toString().trimEnd('/')
-            Config.profileId  = etProfile.text.toString().trim()
-            prefs.edit()
-                .putString("backend_url", Config.backendUrl)
-                .putString("profile_id",  Config.profileId)
-                .apply()
-            Toast.makeText(this, "Ayarlar Kaydedildi", Toast.LENGTH_SHORT).show()
-            updateStatus()
-        }
+            btnSave.setOnClickListener {
+                Config.backendUrl = etUrl.text.toString().trimEnd('/')
+                Config.profileId  = etProfile.text.toString().trim()
+                prefs.edit()
+                    .putString("backend_url", Config.backendUrl)
+                    .putString("profile_id",  Config.profileId)
+                    .apply()
+                Toast.makeText(this, "Ayarlar Kaydedildi", Toast.LENGTH_SHORT).show()
+                updateStatus()
+            }
 
-        btnPerm.setOnClickListener {
-            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-        }
+            btnPerm.setOnClickListener {
+                startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+            }
 
-        btnStart.setOnClickListener {
+            btnStart.setOnClickListener {
+                if (!allPermissionsGranted()) {
+                    permissionLauncher.launch(dangerousPermissions)
+                } else {
+                    screenCaptureLauncher.launch(projectionManager.createScreenCaptureIntent())
+                }
+            }
+
+            // İlk açılışta otomatik izin iste
             if (!allPermissionsGranted()) {
                 permissionLauncher.launch(dangerousPermissions)
             } else {
-                screenCaptureLauncher.launch(projectionManager.createScreenCaptureIntent())
+                connectSocketIfNeeded()
             }
-        }
 
-        // İlk açılışta otomatik izin iste
-        if (!allPermissionsGranted()) {
-            permissionLauncher.launch(dangerousPermissions)
-        } else {
-            connectSocketIfNeeded()
+            updateStatus()
+            Log.e("FSA", "MainActivity onCreate tamamlandı")
+        } catch (e: Exception) {
+            Log.e("FSA", "MainActivity onCreate HATA: ${e.message}", e)
         }
-
-        updateStatus()
     }
 
     override fun onResume() {

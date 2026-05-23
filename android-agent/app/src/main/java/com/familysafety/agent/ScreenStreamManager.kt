@@ -20,14 +20,17 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 
 /**
- * Canlı ekran akışı yöneticisi.
- * start() → ImageReader döngüsü başlar, her kare Socket.io "screen_frame" eventiyle gönderilir.
- * stop()  → VirtualDisplay ve ImageReader serbest bırakılır.
+ * Canlı ekran akışı yöneticisi — MeshCentral ScreenCaptureService.kt referans alınarak yazıldı.
+ *
+ * Önemli değişiklikler:
+ * - VirtualDisplay flags: OWN_CONTENT_ONLY | PUBLIC  (AUTO_MIRROR yerine)
+ * - Frame döngüsü: setOnImageAvailableListener  (polling yerine)
+ * - Rate limiting: lastEmitTime ile 500ms throttle
  */
 object ScreenStreamManager {
 
     private const val TAG = "ScreenStreamManager"
-    private const val FRAME_INTERVAL_MS = 500L   // 2 FPS — Supabase direkt upload
+    private const val MIN_INTERVAL_MS = 500L  // ~2 FPS
     private const val JPEG_QUALITY = 45
 
     private val httpClient = OkHttpClient()
@@ -38,11 +41,11 @@ object ScreenStreamManager {
     private var handlerThread: HandlerThread? = null
     private var handler: Handler? = null
 
-    @Volatile
-    private var streaming = false
+    @Volatile private var streaming = false
+    @Volatile private var lastEmitTime = 0L
 
     fun setMediaProjection(projection: MediaProjection) {
-        this.mediaProjection = projection
+        mediaProjection = projection
     }
 
     fun isProjectionReady(): Boolean = mediaProjection != null
@@ -59,19 +62,46 @@ object ScreenStreamManager {
             stop()
         }
         streaming = true
+        lastEmitTime = 0L
 
+        // MeshCentral: arka plan thread'de kendi Looper'ı olan Handler
         handlerThread = HandlerThread("ScreenStream").also { it.start() }
         handler = Handler(handlerThread!!.looper)
 
         imageReader = ImageReader.newInstance(widthPx, heightPx, PixelFormat.RGBA_8888, 2)
+
+        // MeshCentral'dan alınan flag kombinasyonu (production-tested)
+        val flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY or
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC
+
+        // Handler hem createVirtualDisplay'e hem listener'a geçiliyor — MeshCentral pattern
         virtualDisplay = projection.createVirtualDisplay(
-            "LiveStream", widthPx, heightPx, densityDpi,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+            "screencap", widthPx, heightPx, densityDpi,
+            flags,
             imageReader!!.surface, null, handler
         )
 
-        scheduleNextFrame(widthPx, heightPx)
-        Log.d(TAG, "Ekran akışı başladı (${widthPx}x${heightPx})")
+        // MediaProjection durduğunda temizlik — MeshCentral MediaProjectionStopCallback
+        projection.registerCallback(object : MediaProjection.Callback() {
+            override fun onStop() {
+                handler?.post { stop() }
+            }
+        }, handler)
+
+        // Event-driven — sistem kare hazır olduğunda çağırır (polling değil)
+        imageReader!!.setOnImageAvailableListener({ reader ->
+            if (!streaming) return@setOnImageAvailableListener
+            val now = System.currentTimeMillis()
+            if (now - lastEmitTime < MIN_INTERVAL_MS) {
+                // Throttle: bu kareyi at, ama image'ı mutlaka kapat
+                reader.acquireLatestImage()?.close()
+                return@setOnImageAvailableListener
+            }
+            lastEmitTime = now
+            processFrame(reader, widthPx, heightPx)
+        }, handler)
+
+        Log.d(TAG, "Ekran akışı başladı (${widthPx}x${heightPx}), flags=$flags")
     }
 
     // ── Akış Durdur ───────────────────────────────────────────────────────────
@@ -79,6 +109,7 @@ object ScreenStreamManager {
     fun stop() {
         streaming = false
         try {
+            imageReader?.setOnImageAvailableListener(null, null)
             virtualDisplay?.release()
             imageReader?.close()
             handlerThread?.quitSafely()
@@ -92,53 +123,58 @@ object ScreenStreamManager {
         Log.d(TAG, "Ekran akışı durduruldu")
     }
 
-    // ── Kare Döngüsü ──────────────────────────────────────────────────────────
+    // ── Kare İşle ─────────────────────────────────────────────────────────────
 
-    private fun scheduleNextFrame(width: Int, height: Int) {
-        if (!streaming) return
-        handler?.postDelayed({
-            captureAndEmit(width, height)
-            scheduleNextFrame(width, height)
-        }, FRAME_INTERVAL_MS)
-    }
-
-    private fun captureAndEmit(width: Int, height: Int) {
-        val reader = imageReader ?: return
+    private fun processFrame(reader: ImageReader, width: Int, height: Int) {
         try {
             val image = reader.acquireLatestImage() ?: return
+
             val planes = image.planes
             val buffer = planes[0].buffer
-            val pixelStride = planes[0].pixelStride
-            val rowStride = planes[0].rowStride
+            val pixelStride = planes[0].pixelStride  // RGBA_8888 → 4
+            val rowStride = planes[0].rowStride      // >= width * 4 (padding olabilir)
             val rowPadding = rowStride - pixelStride * width
 
-            val bitmap = Bitmap.createBitmap(
-                width + rowPadding / pixelStride,
-                height,
-                Bitmap.Config.ARGB_8888
+            // MeshCentral pattern: geniş bitmap oluştur, padding dahil
+            val wideBitmap = Bitmap.createBitmap(
+                width + rowPadding / pixelStride, height, Bitmap.Config.ARGB_8888
             )
-            bitmap.copyPixelsFromBuffer(buffer)
+            wideBitmap.copyPixelsFromBuffer(buffer)
             image.close()
+
+            // Sağdaki padding piksellerini kırp → asıl ekran boyutu
+            val bitmap = if (rowPadding > 0) {
+                Bitmap.createBitmap(wideBitmap, 0, 0, width, height)
+                    .also { wideBitmap.recycle() }
+            } else {
+                wideBitmap
+            }
 
             val stream = ByteArrayOutputStream()
             bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, stream)
             bitmap.recycle()
 
             val jpegBytes = stream.toByteArray()
+            if (jpegBytes.isEmpty()) {
+                Log.w(TAG, "JPEG boş — kare atlanıyor")
+                return
+            }
 
-            // Socket.io — lokal ağda hızlı fallback
+            // Signal server (port 8001) → dashboard'a ilet
             val b64 = Base64.encodeToString(jpegBytes, Base64.NO_WRAP)
             val payload = JSONObject().apply {
                 put("profileId", Config.profileId)
                 put("frame", b64)
                 put("ts", System.currentTimeMillis())
             }
-            SocketManager.emit("screen_frame", payload)
+            SocketManager.emitSignal("screen_frame", payload)
+            Log.v(TAG, "Kare gönderildi: ${jpegBytes.size} bytes")
 
             // Supabase Storage — direkt upload + Realtime broadcast
             uploadToSupabase(jpegBytes)
+
         } catch (e: Exception) {
-            Log.e(TAG, "Kare yakalanamadı: ${e.message}")
+            Log.e(TAG, "processFrame hatası: ${e.message}")
         }
     }
 
@@ -169,7 +205,7 @@ object ScreenStreamManager {
         }
     }
 
-    // ── Supabase Realtime Broadcast — dashboard'a "kare hazır" sinyali ───────
+    // ── Supabase Realtime Broadcast ───────────────────────────────────────────
 
     private fun broadcastToRealtime() {
         try {
