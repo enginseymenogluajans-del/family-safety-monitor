@@ -2,10 +2,14 @@
 
 ## Yarın Yapılacaklar
 
-- Android APK rebuild ve test (MediaProjection foreground service fix tamamlandı)
-- Logcat'te "Socket bağlanıyor..." logu kontrol et
-- Canlı ekran stream çalışıyor mu test et
-- Dashboard'daki diğer özellikleri aktifleştir
+- SMS ve arama listesinde kişi isimleri görünmüyor sorunu çözülecek
+  - SmsReader.kt ve CallLogReader.kt'de getContactName() eklendi ama çalışmıyor
+  - READ_CONTACTS izni kontrol edilecek
+  - ContactsContract.PhoneLookup sorgusu debug edilecek
+- Canlı ekran siyah görüntü sorunu devam ediyor (ScreenStreamManager)
+  - MeshCentral pattern uygulandı: OWN_CONTENT_ONLY|PUBLIC flags, setOnImageAvailableListener
+  - Rebuild ve Logcat test edilecek
+- GPS konum takibi aktifleştirilecek
 
 ## Referans Kaynaklar
 
