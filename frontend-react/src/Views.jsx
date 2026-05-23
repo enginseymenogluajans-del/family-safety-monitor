@@ -238,8 +238,18 @@ export const CallsView = () => {
                           </span>
                         )}
                       </td>
-                      <td className="px-5 py-3 font-mono text-zinc-300">
-                        {c.phone_number || "?"}
+                      <td className="px-5 py-3 text-zinc-300">
+                        <div className="font-medium">
+                          {c.contact_name && c.contact_name !== c.phone_number
+                            ? c.contact_name
+                            : c.phone_number || "?"}
+                        </div>
+                        {c.contact_name &&
+                          c.contact_name !== c.phone_number && (
+                            <div className="text-[10px] text-zinc-500 font-mono">
+                              {c.phone_number}
+                            </div>
+                          )}
                       </td>
                       <td className="px-5 py-3 text-zinc-400">
                         {fmtSec(c.duration)}
@@ -404,8 +414,17 @@ export const SmsView = () => {
                     key={i}
                     className={`hover:bg-zinc-800/30 transition-colors ${m.risk_level === "high" ? "bg-red-500/5" : ""}`}
                   >
-                    <td className="px-5 py-3 font-mono text-sm text-zinc-300">
-                      {m.sender || "?"}
+                    <td className="px-5 py-3 text-zinc-300">
+                      <div className="font-medium">
+                        {m.contact_name && m.contact_name !== m.sender
+                          ? m.contact_name
+                          : m.sender || "?"}
+                      </div>
+                      {m.contact_name && m.contact_name !== m.sender && (
+                        <div className="text-[10px] text-zinc-500 font-mono">
+                          {m.sender}
+                        </div>
+                      )}
                     </td>
                     <td className="px-5 py-3 text-zinc-400 max-w-xs truncate">
                       {m.is_redacted && (
