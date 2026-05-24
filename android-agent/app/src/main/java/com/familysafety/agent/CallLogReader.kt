@@ -53,17 +53,39 @@ object CallLogReader {
 
     private fun getContactName(context: Context, phoneNumber: String): String {
         if (phoneNumber.isBlank()) return phoneNumber
-        val uri = Uri.withAppendedPath(
-            ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
-            Uri.encode(phoneNumber)
-        )
-        context.contentResolver.query(
-            uri,
-            arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME),
-            null, null, null
-        )?.use { cursor ->
-            if (cursor.moveToFirst()) return cursor.getString(0)
+
+        // READ_CONTACTS runtime izni kontrolü
+        if (context.checkSelfPermission(android.Manifest.permission.READ_CONTACTS)
+            != PackageManager.PERMISSION_GRANTED) {
+            Log.w(TAG, "getContactName: READ_CONTACTS izni yok — $phoneNumber")
+            return phoneNumber
         }
+
+        // Numarayı normalize et: sadece rakamlar, son 10 hane
+        val digitsOnly = phoneNumber.filter { it.isDigit() }
+        val last10 = if (digitsOnly.length > 10) digitsOnly.takeLast(10) else digitsOnly
+
+        // Orijinal + olası formatlar sırayla denenir
+        val candidates = linkedSetOf(phoneNumber, "+90$last10", "0$last10", last10)
+        for (candidate in candidates) {
+            val uri = Uri.withAppendedPath(
+                ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+                Uri.encode(candidate)
+            )
+            context.contentResolver.query(
+                uri,
+                arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME),
+                null, null, null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val name = cursor.getString(0)
+                    Log.d(TAG, "getContactName: $phoneNumber → $name (eşleşen: $candidate)")
+                    return name
+                }
+            }
+        }
+
+        Log.d(TAG, "getContactName: $phoneNumber → isim bulunamadı")
         return phoneNumber
     }
 

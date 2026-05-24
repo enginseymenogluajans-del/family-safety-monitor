@@ -7,6 +7,7 @@ import android.content.pm.ServiceInfo
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import android.util.Log
 
@@ -62,11 +63,17 @@ class MainService : Service() {
             manager.createNotificationChannel(chan)
         }
 
+        val accEnabled = isAccessibilityEnabled()
+        val statusText = if (accEnabled)
+            "Klavye takibi aktif — arka planda koruyor."
+        else
+            "Klavye takibi KAPALI — Erişilebilirlik iznini ver."
+
         val notification = NotificationCompat.Builder(this, channelId)
             .setOngoing(true)
             .setSmallIcon(android.R.drawable.ic_menu_compass)
             .setContentTitle("Sistem Koruması Aktif")
-            .setContentText("Uygulama arka planda güvenliği sağlıyor.")
+            .setContentText(statusText)
             .setPriority(NotificationManager.IMPORTANCE_LOW)
             .setCategory(Notification.CATEGORY_SERVICE)
             .build()
@@ -89,6 +96,13 @@ class MainService : Service() {
         } else {
             startForeground(1, notification)
         }
+    }
+
+    private fun isAccessibilityEnabled(): Boolean {
+        val services = Settings.Secure.getString(
+            contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        return services.contains("${packageName}/${packageName}.SafetyAccessibilityService")
     }
 
     override fun onDestroy() {

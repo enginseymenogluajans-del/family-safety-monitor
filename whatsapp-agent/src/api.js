@@ -37,7 +37,11 @@ router.get("/api/messages", async (req, res) => {
   try {
     const limit = Math.min(parseInt(req.query.limit) || 100, 1000);
     const rows = await db.getMessages(PROFILE_ID, limit);
-    res.json(rows.map(rowToMessage));
+    // Oturum öncesi tombstone'ları filtrele
+    const filtered = rows.filter(
+      (r) => !(r.is_deleted && r.body && r.body.startsWith("[Silindi")),
+    );
+    res.json(filtered.map(rowToMessage));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

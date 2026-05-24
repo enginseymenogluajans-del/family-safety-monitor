@@ -1716,8 +1716,7 @@ export const LoggerView = () => {
                   month: "short",
                 });
                 const isRisk =
-                  row.text.toLowerCase().includes("risk") ||
-                  row.text.length > 50;
+                  row.is_risk_alert === 1 || row.is_risk_alert === true;
 
                 return (
                   <div

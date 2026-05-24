@@ -2,6 +2,19 @@
 
 require("dotenv").config();
 
+// ── Global hata yakalama — sessiz çöküşleri engelle ──────────────────────────
+process.on("uncaughtException", (err) => {
+  console.error("[FATAL] uncaughtException:", err.message);
+  console.error(err.stack);
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[FATAL] unhandledRejection:", reason);
+  if (reason instanceof Error) console.error(reason.stack);
+  process.exit(1);
+});
+
 const qrcode = require("qrcode-terminal");
 const express = require("express");
 const cors = require("cors");
@@ -87,8 +100,9 @@ async function startWhatsApp() {
     await client.initialize();
   } catch (err) {
     console.error("[WA] initialize() hatası:", err.message);
+    console.error(err.stack);
     state.isConnected = false;
-    console.log(`[WA] ${8}s sonra yeniden deneniyor…`);
+    console.log("[WA] 8s sonra yeniden deneniyor…");
     setTimeout(() => startWhatsApp(), 8000);
   }
 }

