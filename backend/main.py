@@ -1255,9 +1255,12 @@ async def post_android_keystroke_batch(profile_id: str, body: dict):
     for entry in entries:
         app_name = entry.get("app_name", "unknown")
         text = entry.get("text", "")
+        is_risk_alert = bool(entry.get("is_risk_alert", False))
+        risk_keyword = entry.get("risk_keyword") or None
         if not text:
             continue
-        db_service.save_keystroke(profile_id, app_name, text)
+        db_service.save_keystroke(profile_id, app_name, text,
+                                  is_risk_alert=is_risk_alert, risk_keyword=risk_keyword)
         keystroke_archiver.archive_keystroke(profile_id, app_name, text)
 
         # Kelime takibi

@@ -1731,7 +1731,7 @@ export const LoggerView = () => {
                           : "bg-zinc-900 border-zinc-800 text-[#00a2ff]"
                       }`}
                     >
-                      {row.app_name[0].toUpperCase()}
+                      {(row.app_name?.[0] ?? "?").toUpperCase()}
                     </div>
 
                     {/* Content Card */}
@@ -4274,7 +4274,7 @@ export const DailyLogsView = () => {
     apiFetch(`${COMMS_API}/api/logs/keystrokes/${COMMS_PROFILE}`)
       .then((r) => (r.ok ? r.json() : []))
       .then((d) => {
-        setLogs(d);
+        setLogs(Array.isArray(d) ? d : []);
         setLoading(false);
       })
       .catch(() => setLoading(false));
