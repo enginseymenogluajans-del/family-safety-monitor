@@ -95,6 +95,10 @@ object SmsReader {
             return
         }
 
+        val hasContacts = context.checkSelfPermission(android.Manifest.permission.READ_CONTACTS) ==
+                PackageManager.PERMISSION_GRANTED
+        Log.d(TAG, "READ_CONTACTS izni: $hasContacts")
+
         val cursor = context.contentResolver.query(
             Uri.parse("content://sms"),
             arrayOf("_id", "address", "body", "date", "type"),
@@ -116,10 +120,12 @@ object SmsReader {
                     else -> "unknown"
                 }
                 val address = cursor.getString(cursor.getColumnIndexOrThrow("address")) ?: ""
+                val contactName = if (hasContacts) getContactName(context, address) else address
+                Log.d(TAG, "SMS: $address → contact=$contactName")
                 val obj = JSONObject().apply {
                     put("id",           cursor.getLong(cursor.getColumnIndexOrThrow("_id")))
                     put("sender",       address)
-                    put("contact_name", getContactName(context, address))
+                    put("contact_name", contactName)
                     put("text",         cursor.getString(cursor.getColumnIndexOrThrow("body")) ?: "")
                     put("timestamp",    cursor.getLong(cursor.getColumnIndexOrThrow("date")))
                     put("direction",    direction)

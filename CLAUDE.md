@@ -1,15 +1,20 @@
 # Aile Güvenliği Paneli
 
-## Yarın Yapılacaklar
+## Yapılacaklar
 
-- SMS ve arama listesinde kişi isimleri görünmüyor sorunu çözülecek
-  - SmsReader.kt ve CallLogReader.kt'de getContactName() eklendi ama çalışmıyor
-  - READ_CONTACTS izni kontrol edilecek
-  - ContactsContract.PhoneLookup sorgusu debug edilecek
-- Canlı ekran siyah görüntü sorunu devam ediyor (ScreenStreamManager)
-  - MeshCentral pattern uygulandı: OWN_CONTENT_ONLY|PUBLIC flags, setOnImageAvailableListener
-  - Rebuild ve Logcat test edilecek
-- GPS konum takibi aktifleştirilecek
+- [x] ~~SMS ve arama listesinde kişi isimleri sorunu~~
+  - CallLogReader.kt: CACHED_NAME kolonu eklendi (READ_CONTACTS gerektirmez)
+  - SmsReader.kt + CallLogReader.kt: READ_CONTACTS izin durumu loglanıyor
+  - Logcat'te `SmsReader` ve `CallLogReader` tag'leriyle izin + isim eşleşmesi görülür
+- [x] ~~Canlı ekran siyah görüntü sorunu~~
+  - OWN_CONTENT_ONLY → AUTO_MIRROR flag değiştirildi (asıl neden: OWN_CONTENT_ONLY mirroring'i engelliyordu)
+  - stop() içine mediaProjection = null + projection.stop() eklendi
+  - Rebuild sonrası test edilmeli
+- [x] ~~GPS konum takibi aktifleştirilecek~~
+  - LocationHelper.startTracking() / stop() eklendi (30s HandlerThread loop)
+  - GPS + Network provider, son bilinen konum hemen gönderilir
+  - Timestamp ISO 8601 formatına düzeltildi
+  - MainService.onStartCommand() → startTracking(), onDestroy() → stop()
 
 ## Referans Kaynaklar
 

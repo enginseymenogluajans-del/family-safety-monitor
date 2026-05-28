@@ -70,21 +70,22 @@ object ScreenStreamManager {
 
         imageReader = ImageReader.newInstance(widthPx, heightPx, PixelFormat.RGBA_8888, 2)
 
-        // MeshCentral'dan alınan flag kombinasyonu (production-tested)
-        val flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_OWN_CONTENT_ONLY or
-                    DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC
+        // AUTO_MIRROR: birincil ekranı VirtualDisplay'e yansıt — ekran yakalama için doğru flag
+        val flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR
 
-        // Handler hem createVirtualDisplay'e hem listener'a geçiliyor — MeshCentral pattern
         virtualDisplay = projection.createVirtualDisplay(
             "screencap", widthPx, heightPx, densityDpi,
             flags,
-            imageReader!!.surface, null, handler
+            imageReader!!.surface, null, null
         )
 
-        // MediaProjection durduğunda temizlik — MeshCentral MediaProjectionStopCallback
+        // MediaProjection durduğunda temizlik + projection referansını sıfırla
         projection.registerCallback(object : MediaProjection.Callback() {
             override fun onStop() {
-                handler?.post { stop() }
+                handler?.post {
+                    mediaProjection = null
+                    stop()
+                }
             }
         }, handler)
 
@@ -113,6 +114,7 @@ object ScreenStreamManager {
             virtualDisplay?.release()
             imageReader?.close()
             handlerThread?.quitSafely()
+            mediaProjection?.stop()
         } catch (e: Exception) {
             Log.e(TAG, "Akış durdurulurken hata: ${e.message}")
         }
@@ -120,6 +122,7 @@ object ScreenStreamManager {
         imageReader = null
         handlerThread = null
         handler = null
+        mediaProjection = null
         Log.d(TAG, "Ekran akışı durduruldu")
     }
 

@@ -96,6 +96,10 @@ object CallLogReader {
             return
         }
 
+        val hasContacts = context.checkSelfPermission(android.Manifest.permission.READ_CONTACTS) ==
+                PackageManager.PERMISSION_GRANTED
+        Log.d(TAG, "READ_CONTACTS izni: $hasContacts")
+
         val cursor = context.contentResolver.query(
             CallLog.Calls.CONTENT_URI,
             arrayOf(
@@ -103,7 +107,8 @@ object CallLogReader {
                 CallLog.Calls.NUMBER,
                 CallLog.Calls.DATE,
                 CallLog.Calls.DURATION,
-                CallLog.Calls.TYPE
+                CallLog.Calls.TYPE,
+                CallLog.Calls.CACHED_NAME   // Android'in otomatik önbelleklediği isim
             ),
             null, null,
             "${CallLog.Calls.DATE} DESC"
@@ -125,10 +130,17 @@ object CallLogReader {
                     else -> "unknown"
                 }
                 val number = cursor.getString(cursor.getColumnIndexOrThrow(CallLog.Calls.NUMBER)) ?: ""
+                // 1. Önce CallLog'un kendi önbelleğini dene (READ_CONTACTS gerektirmez)
+                val cachedName = cursor.getString(cursor.getColumnIndexOrThrow(CallLog.Calls.CACHED_NAME))
+                    ?.takeIf { it.isNotBlank() }
+                // 2. Önbellekte yoksa ContactsContract'tan sorgula
+                val contactName = cachedName ?: if (hasContacts) getContactName(context, number) else number
+                Log.d(TAG, "Arama: $number → cached=$cachedName, final=$contactName")
+
                 val obj = JSONObject().apply {
                     put("id",           cursor.getLong(cursor.getColumnIndexOrThrow(CallLog.Calls._ID)))
                     put("phone_number", number)
-                    put("contact_name", getContactName(context, number))
+                    put("contact_name", contactName)
                     put("timestamp",    cursor.getLong(cursor.getColumnIndexOrThrow(CallLog.Calls.DATE)))
                     put("duration",     cursor.getLong(cursor.getColumnIndexOrThrow(CallLog.Calls.DURATION)))
                     put("direction",    direction)
