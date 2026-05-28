@@ -22,6 +22,28 @@
   - Uzaktan erişim teknikleri, WebRTC/socket.io çözümleri, canlı izleme implementasyonları
   - NOT: Claude bu URL'e doğrudan erişemez — içerikleri bu dosyaya veya konuşmaya yapıştırarak kullan
 
+## Build & Deploy Verification
+
+- After any Android build, verify the APK timestamp and installed version on device before declaring success (use `adb shell dumpsys package <pkg> | grep versionName` and check file mtime).
+- Never claim a build succeeded based on command exit code alone—confirm the artifact exists and is newer than the previous build.
+- After every build command: check the artifact's modification time, confirm it's newer than 60 seconds, and for installed apps run `adb shell dumpsys package com.familysafety.agent | grep versionName`. Do not declare success until the verification output is pasted.
+
+## Minimal-Diff Discipline
+
+- Do not re-read files already confirmed complete in this session; track progress in MEMORY.md when working across phases.
+- Make targeted, minimal edits—do not rescan or rewrite untouched components.
+- Verify a file/function actually exists in the codebase before attempting to 'fix' it.
+
+## Shell & Process Conventions
+
+- Do not run interactive commands (codex login, expo start, npm create) in background or via Bash with no TTY—hand off to the user with the exact command to run.
+- Flag any command requiring stdin and stop rather than spinning indefinitely.
+
+## Dependency & API Verification
+
+- Before importing a symbol from a third-party library, verify it exists in the installed version (check package.json/requirements.txt then grep node_modules or site-packages).
+- For MCP CLI flags, check `claude mcp add --help` before guessing flag names like --global.
+
 ## Environment Context
 
 - Backend runs on Windows machine; frontend/iOS development happens on Mac

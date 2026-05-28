@@ -39,6 +39,16 @@
   "hooks": {
     "PostToolUse": [
       {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/verify-build-claim.js",
+            "shell": "bash"
+          }
+        ]
+      },
+      {
         "matcher": "Edit|Write",
         "hooks": [
           {
@@ -107,6 +117,27 @@
           {
             "type": "command",
             "command": "node -e \"let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{const j=JSON.parse(d);const cmd=(j.tool_input&&j.tool_input.command)||'';const exit=(j.tool_response&&j.tool_response.exit_code);if(cmd&&exit!==undefined&&exit!==0)console.log('[Bash FAIL exit='+exit+'] '+cmd.substring(0,80))}catch(e){}})\" 2>/dev/null || true"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npm run lint --silent 2>&1 | tail -20 || true",
+            "shell": "bash"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/block-failing-test.js",
+            "shell": "bash"
           }
         ]
       }

@@ -187,21 +187,28 @@ def init_db() -> None:
             );
 
             CREATE TABLE IF NOT EXISTS keystrokes (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                profile_id  TEXT    NOT NULL,
-                app_name    TEXT    NOT NULL,
-                text        TEXT    NOT NULL,
-                timestamp   TEXT    NOT NULL,
-                created_at  TEXT    DEFAULT (datetime('now'))
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile_id    TEXT    NOT NULL,
+                app_name      TEXT    NOT NULL,
+                text          TEXT    NOT NULL,
+                timestamp     TEXT    NOT NULL,
+                is_risk_alert INTEGER DEFAULT 0,
+                risk_keyword  TEXT    DEFAULT NULL,
+                created_at    TEXT    DEFAULT (datetime('now'))
             );
             CREATE INDEX IF NOT EXISTS idx_key_profile
                 ON keystrokes(profile_id, timestamp DESC);
         """)
-        # Migration: add backup_path column to existing databases
-        try:
-            db.execute("ALTER TABLE profiles ADD COLUMN backup_path TEXT")
-        except Exception:
-            pass  # Column already exists
+        # Migrations
+        for col, ddl in [
+            ("backup_path",   "ALTER TABLE profiles ADD COLUMN backup_path TEXT"),
+            ("is_risk_alert", "ALTER TABLE keystrokes ADD COLUMN is_risk_alert INTEGER DEFAULT 0"),
+            ("risk_keyword",  "ALTER TABLE keystrokes ADD COLUMN risk_keyword TEXT DEFAULT NULL"),
+        ]:
+            try:
+                db.execute(ddl)
+            except Exception:
+                pass  # Column already exists
 
 
 # ── Konum ───────────────────────────────────────────────────────────────────
@@ -552,13 +559,16 @@ def get_android_device_info(profile_id: str):
 
 # ── Klavye Takibi ────────────────────────────────────────────────────────────
 
-def save_keystroke(profile_id: str, app_name: str, text: str) -> None:
-    """iOS Klavyeden gelen metni veritabanına kaydeder."""
+def save_keystroke(profile_id: str, app_name: str, text: str,
+                   is_risk_alert: bool = False, risk_keyword: str = None) -> None:
+    """Klavye verisini veritabanına kaydeder."""
     with _conn() as db:
         db.execute(
-            """INSERT INTO keystrokes (profile_id, app_name, text, timestamp)
-               VALUES (?, ?, ?, ?)""",
-            (profile_id, app_name, text, datetime.now().isoformat()),
+            """INSERT INTO keystrokes
+               (profile_id, app_name, text, timestamp, is_risk_alert, risk_keyword)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (profile_id, app_name, text, datetime.now().isoformat(),
+             1 if is_risk_alert else 0, risk_keyword),
         )
 
 
@@ -566,9 +576,9 @@ def get_keystroke_history(profile_id: str, limit: int = 200) -> list[dict]:
     """Klavye geçmişini döndürür."""
     with _conn() as db:
         rows = db.execute(
-            """SELECT app_name, text, timestamp 
-               FROM keystrokes 
-               WHERE profile_id = ? 
+            """SELECT app_name, text, timestamp, is_risk_alert, risk_keyword
+               FROM keystrokes
+               WHERE profile_id = ?
                ORDER BY timestamp DESC LIMIT ?""",
             (profile_id, limit),
         ).fetchall()
