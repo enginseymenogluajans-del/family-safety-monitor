@@ -39,7 +39,9 @@ def _has_trust_token(apple_id: str, cookie_dir: str) -> bool:
         return False
 
 
-def connect(profile_id: str, apple_id: str, password: str) -> ProfileStatus:
+def connect(profile_id: str, apple_id: str, password: str, _sleep_fn=None) -> ProfileStatus:
+    """Connect to iCloud. Pass _sleep_fn=lambda s: None in tests to skip retry delays."""
+    _sleep = _sleep_fn if _sleep_fn is not None else time.sleep
     cookie_dir = os.getenv("ICLOUD_COOKIE_DIR", "../credentials")
 
     has_token = _has_trust_token(apple_id, cookie_dir)
@@ -68,7 +70,7 @@ def connect(profile_id: str, apple_id: str, password: str) -> ProfileStatus:
             last_error = str(e)
             print(f"[iCLOUD 503] Deneme {attempt + 1}/3 — {last_error}")
             if attempt < len(retry_delays):
-                time.sleep(retry_delays[attempt])
+                _sleep(retry_delays[attempt])
         except Exception as e:
             print(f"[iCLOUD ERROR] apple_id={apple_id}")
             traceback.print_exc()

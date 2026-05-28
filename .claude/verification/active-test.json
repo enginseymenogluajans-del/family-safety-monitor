@@ -1,0 +1,9 @@
+{
+  "test_file": "backend/tests/test_fix_icloud_retry_sleep.py",
+  "test_command": "pytest backend/tests/test_fix_icloud_retry_sleep.py -v",
+  "branch": "fix/icloud-retry-sleep",
+  "status": "passing",
+  "iteration": 1,
+  "max_iterations": 20,
+  "updated_at": 1748476900
+}
