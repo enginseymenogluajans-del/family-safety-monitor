@@ -1,12 +1,12 @@
 -- Merging decision tree log ---
 manifest
-ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:2:1-80:12
-INJECTED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:2:1-80:12
-INJECTED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:2:1-80:12
-INJECTED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:2:1-80:12
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:2:1-122:12
+INJECTED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:2:1-122:12
+INJECTED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:2:1-122:12
+INJECTED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:2:1-122:12
 MERGED from [com.google.android.material:material:1.11.0] C:\Users\engin\.gradle\caches\transforms-3\bd45a1c32da3781353d9453def228225\transformed\material-1.11.0\AndroidManifest.xml:17:1-24:12
+MERGED from [androidx.constraintlayout:constraintlayout:2.1.4] C:\Users\engin\.gradle\caches\transforms-3\097c658917e6f9a97bfbd6351d93f194\transformed\constraintlayout-2.1.4\AndroidManifest.xml:2:1-11:12
 MERGED from [androidx.appcompat:appcompat-resources:1.6.1] C:\Users\engin\.gradle\caches\transforms-3\36f1e79e0ba1eea138ef29ae012fbec2\transformed\appcompat-resources-1.6.1\AndroidManifest.xml:17:1-22:12
-MERGED from [androidx.constraintlayout:constraintlayout:2.0.1] C:\Users\engin\.gradle\caches\transforms-3\237d805e0e49eae7f22d49278d723dd0\transformed\constraintlayout-2.0.1\AndroidManifest.xml:2:1-11:12
 MERGED from [androidx.appcompat:appcompat:1.6.1] C:\Users\engin\.gradle\caches\transforms-3\483e5f2a6243aac7190e0623d19f2de2\transformed\appcompat-1.6.1\AndroidManifest.xml:17:1-22:12
 MERGED from [androidx.emoji2:emoji2-views-helper:1.2.0] C:\Users\engin\.gradle\caches\transforms-3\596aa8a5bba40d69092c9403dc69063b\transformed\emoji2-views-helper-1.2.0\AndroidManifest.xml:2:1-7:12
 MERGED from [androidx.emoji2:emoji2:1.2.0] C:\Users\engin\.gradle\caches\transforms-3\c5c5fc30c4fb88a7671548ef934969e6\transformed\emoji2-1.2.0\AndroidManifest.xml:17:1-35:12
@@ -132,25 +132,33 @@ uses-permission#android.permission.READ_SMS
 ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:20:5-67
 	android:name
 		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:20:22-64
+uses-permission#android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:21:5-95
+	android:name
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:21:22-92
+uses-permission#android.permission.REQUEST_INSTALL_PACKAGES
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:22:5-83
+	android:name
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:22:22-80
 uses-feature#android.hardware.camera
-ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:22:5-85
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:24:5-85
 	android:required
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:22:58-82
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:24:58-82
 	android:name
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:22:19-57
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:24:19-57
 uses-feature#android.hardware.camera.autofocus
-ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:23:5-95
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:25:5-95
 	android:required
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:23:68-92
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:25:68-92
 	android:name
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:23:19-67
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:25:19-67
 application
-ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:25:5-79:19
-INJECTED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:25:5-79:19
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:27:5-121:19
+INJECTED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:27:5-121:19
 MERGED from [com.google.android.material:material:1.11.0] C:\Users\engin\.gradle\caches\transforms-3\bd45a1c32da3781353d9453def228225\transformed\material-1.11.0\AndroidManifest.xml:22:5-20
 MERGED from [com.google.android.material:material:1.11.0] C:\Users\engin\.gradle\caches\transforms-3\bd45a1c32da3781353d9453def228225\transformed\material-1.11.0\AndroidManifest.xml:22:5-20
-MERGED from [androidx.constraintlayout:constraintlayout:2.0.1] C:\Users\engin\.gradle\caches\transforms-3\237d805e0e49eae7f22d49278d723dd0\transformed\constraintlayout-2.0.1\AndroidManifest.xml:9:5-20
-MERGED from [androidx.constraintlayout:constraintlayout:2.0.1] C:\Users\engin\.gradle\caches\transforms-3\237d805e0e49eae7f22d49278d723dd0\transformed\constraintlayout-2.0.1\AndroidManifest.xml:9:5-20
+MERGED from [androidx.constraintlayout:constraintlayout:2.1.4] C:\Users\engin\.gradle\caches\transforms-3\097c658917e6f9a97bfbd6351d93f194\transformed\constraintlayout-2.1.4\AndroidManifest.xml:9:5-20
+MERGED from [androidx.constraintlayout:constraintlayout:2.1.4] C:\Users\engin\.gradle\caches\transforms-3\097c658917e6f9a97bfbd6351d93f194\transformed\constraintlayout-2.1.4\AndroidManifest.xml:9:5-20
 MERGED from [androidx.emoji2:emoji2:1.2.0] C:\Users\engin\.gradle\caches\transforms-3\c5c5fc30c4fb88a7671548ef934969e6\transformed\emoji2-1.2.0\AndroidManifest.xml:23:5-33:19
 MERGED from [androidx.emoji2:emoji2:1.2.0] C:\Users\engin\.gradle\caches\transforms-3\c5c5fc30c4fb88a7671548ef934969e6\transformed\emoji2-1.2.0\AndroidManifest.xml:23:5-33:19
 MERGED from [androidx.work:work-runtime:2.9.0] C:\Users\engin\.gradle\caches\transforms-3\7c1dae2ca47cb7c205c1a329199ad124\transformed\work-runtime-2.9.0\AndroidManifest.xml:28:5-143:19
@@ -172,103 +180,163 @@ MERGED from [androidx.startup:startup-runtime:1.1.1] C:\Users\engin\.gradle\cach
 	android:appComponentFactory
 		ADDED from [androidx.core:core:1.12.0] C:\Users\engin\.gradle\caches\transforms-3\ffcf09bf8e38693d77e6db9632c3d1a3\transformed\core-1.12.0\AndroidManifest.xml:28:18-86
 	android:supportsRtl
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:28:9-35
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:31:9-35
 	android:label
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:27:9-41
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:30:9-41
 	android:allowBackup
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:26:9-35
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:29:9-35
 	android:theme
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:29:9-65
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:32:9-65
 	android:usesCleartextTraffic
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:30:9-44
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:33:9-44
+	android:name
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:28:9-40
 activity#com.familysafety.agent.MainActivity
-ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:32:9-39:20
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:35:9-42:20
 	android:exported
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:34:13-36
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:37:13-36
 	android:name
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:33:13-41
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:36:13-41
 intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
-ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:35:13-38:29
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:38:13-41:29
 action#android.intent.action.MAIN
-ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:36:17-69
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:39:17-69
 	android:name
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:36:25-66
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:39:25-66
 category#android.intent.category.LAUNCHER
-ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:37:17-77
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:40:17-77
 	android:name
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:37:27-74
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:40:27-74
+activity#com.familysafety.agent.PasswordCheckActivity
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:44:9-47:61
+	android:exported
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:46:13-37
+	android:theme
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:47:13-58
+	android:name
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:45:13-50
+activity#com.familysafety.agent.SettingsActivity
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:49:9-52:39
+	android:label
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:52:13-36
+	android:exported
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:51:13-37
+	android:name
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:50:13-45
+activity-alias#com.familysafety.agent.MainActivityAlias
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:55:9-65:26
+	android:enabled
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:59:13-35
+	android:label
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:60:13-45
+	android:exported
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:58:13-36
+	android:targetActivity
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:57:13-51
+	android:name
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:56:13-46
 service#com.familysafety.agent.NotificationAgent
-ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:41:9-49:19
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:67:9-75:19
 	android:label
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:43:13-48
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:69:13-48
 	android:exported
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:44:13-36
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:70:13-36
 	android:permission
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:45:13-87
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:71:13-87
 	android:name
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:42:13-46
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:68:13-46
 intent-filter#action:name:android.service.notification.NotificationListenerService
-ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:46:13-48:29
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:72:13-74:29
 action#android.service.notification.NotificationListenerService
-ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:47:17-99
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:73:17-99
 	android:name
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:47:25-96
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:73:25-96
 service#com.familysafety.agent.MainService
-ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:51:9-55:90
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:77:9-81:90
 	android:enabled
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:53:13-35
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:79:13-35
 	android:exported
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:54:13-37
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:80:13-37
 	android:foregroundServiceType
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:55:13-87
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:81:13-87
 	android:name
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:52:13-40
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:78:13-40
 service#com.familysafety.agent.SafetyAccessibilityService
-ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:57:9-68:19
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:83:9-94:19
 	android:label
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:59:13-52
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:85:13-52
 	android:exported
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:60:13-36
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:86:13-36
 	android:permission
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:61:13-79
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:87:13-79
 	android:name
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:58:13-55
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:84:13-55
 intent-filter#action:name:android.accessibilityservice.AccessibilityService
-ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:62:13-64:29
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:88:13-90:29
 action#android.accessibilityservice.AccessibilityService
-ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:63:17-92
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:89:17-92
 	android:name
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:63:25-89
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:89:25-89
 meta-data#android.accessibilityservice
-ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:65:13-67:72
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:91:13-93:72
 	android:resource
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:67:17-69
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:93:17-69
 	android:name
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:66:17-60
-receiver#com.familysafety.agent.BootReceiver
-ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:70:9-77:20
-	android:enabled
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:72:13-35
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:92:17-60
+receiver#com.familysafety.agent.SafetyDeviceAdminReceiver
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:97:9-107:20
 	android:exported
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:73:13-36
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:99:13-36
+	android:permission
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:100:13-70
 	android:name
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:71:13-41
-intent-filter#action:name:android.intent.action.BOOT_COMPLETED
-ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:74:13-76:29
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:98:13-54
+meta-data#android.app.device_admin
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:101:13-103:56
+	android:resource
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:103:17-53
+	android:name
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:102:17-56
+intent-filter#action:name:android.app.action.DEVICE_ADMIN_ENABLED
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:104:13-106:29
+action#android.app.action.DEVICE_ADMIN_ENABLED
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:105:17-82
+	android:name
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:105:25-79
+receiver#com.familysafety.agent.BootReceiver
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:109:9-119:20
+	android:enabled
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:111:13-35
+	android:exported
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:112:13-36
+	android:directBootAware
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:113:13-43
+	android:name
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:110:13-41
+intent-filter#action:name:android.intent.action.BOOT_COMPLETED+action:name:android.intent.action.LOCKED_BOOT_COMPLETED+action:name:android.intent.action.QUICKBOOT_POWERON
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:114:13-118:29
 action#android.intent.action.BOOT_COMPLETED
-ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:75:17-79
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:115:17-79
 	android:name
-		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:75:25-76
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:115:25-76
+action#android.intent.action.QUICKBOOT_POWERON
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:116:17-82
+	android:name
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:116:25-79
+action#android.intent.action.LOCKED_BOOT_COMPLETED
+ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:117:17-86
+	android:name
+		ADDED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml:117:25-83
 uses-sdk
 INJECTED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml reason: use-sdk injection requested
 INJECTED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml
 INJECTED from C:\Users\engin\Desktop\family-safety-monitor\android-agent\app\src\main\AndroidManifest.xml
 MERGED from [com.google.android.material:material:1.11.0] C:\Users\engin\.gradle\caches\transforms-3\bd45a1c32da3781353d9453def228225\transformed\material-1.11.0\AndroidManifest.xml:20:5-44
 MERGED from [com.google.android.material:material:1.11.0] C:\Users\engin\.gradle\caches\transforms-3\bd45a1c32da3781353d9453def228225\transformed\material-1.11.0\AndroidManifest.xml:20:5-44
+MERGED from [androidx.constraintlayout:constraintlayout:2.1.4] C:\Users\engin\.gradle\caches\transforms-3\097c658917e6f9a97bfbd6351d93f194\transformed\constraintlayout-2.1.4\AndroidManifest.xml:5:5-7:41
+MERGED from [androidx.constraintlayout:constraintlayout:2.1.4] C:\Users\engin\.gradle\caches\transforms-3\097c658917e6f9a97bfbd6351d93f194\transformed\constraintlayout-2.1.4\AndroidManifest.xml:5:5-7:41
 MERGED from [androidx.appcompat:appcompat-resources:1.6.1] C:\Users\engin\.gradle\caches\transforms-3\36f1e79e0ba1eea138ef29ae012fbec2\transformed\appcompat-resources-1.6.1\AndroidManifest.xml:20:5-44
 MERGED from [androidx.appcompat:appcompat-resources:1.6.1] C:\Users\engin\.gradle\caches\transforms-3\36f1e79e0ba1eea138ef29ae012fbec2\transformed\appcompat-resources-1.6.1\AndroidManifest.xml:20:5-44
-MERGED from [androidx.constraintlayout:constraintlayout:2.0.1] C:\Users\engin\.gradle\caches\transforms-3\237d805e0e49eae7f22d49278d723dd0\transformed\constraintlayout-2.0.1\AndroidManifest.xml:5:5-7:41
-MERGED from [androidx.constraintlayout:constraintlayout:2.0.1] C:\Users\engin\.gradle\caches\transforms-3\237d805e0e49eae7f22d49278d723dd0\transformed\constraintlayout-2.0.1\AndroidManifest.xml:5:5-7:41
 MERGED from [androidx.appcompat:appcompat:1.6.1] C:\Users\engin\.gradle\caches\transforms-3\483e5f2a6243aac7190e0623d19f2de2\transformed\appcompat-1.6.1\AndroidManifest.xml:20:5-44
 MERGED from [androidx.appcompat:appcompat:1.6.1] C:\Users\engin\.gradle\caches\transforms-3\483e5f2a6243aac7190e0623d19f2de2\transformed\appcompat-1.6.1\AndroidManifest.xml:20:5-44
 MERGED from [androidx.emoji2:emoji2-views-helper:1.2.0] C:\Users\engin\.gradle\caches\transforms-3\596aa8a5bba40d69092c9403dc69063b\transformed\emoji2-views-helper-1.2.0\AndroidManifest.xml:5:5-44

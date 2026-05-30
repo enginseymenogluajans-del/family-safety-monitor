@@ -40,5 +40,9 @@
       "PowerShell(node --check \"c:\\\\Users\\\\engin\\\\Desktop\\\\family-safety-monitor\\\\whatsapp-agent\\\\src\\\\db.js\" 2>&1)",
       "PowerShell(python -c \"import ast; ast.parse\\(open\\('c:/Users/engin/Desktop/family-safety-monitor/backend/main.py'\\).read\\(\\)\\); print\\('OK'\\)\")"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "family-safety-backend"
+  ],
+  "enableAllProjectMcpServers": true
 }

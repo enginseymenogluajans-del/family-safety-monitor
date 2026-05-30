@@ -74,7 +74,6 @@ class SafetyAccessibilityService : AccessibilityService() {
             notificationTimeout = 100L
             flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
                     AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-            capabilities = AccessibilityServiceInfo.CAPABILITY_CAN_PERFORM_GESTURES
         }
         Log.d(TAG, "AccessibilityService bağlandı")
     }

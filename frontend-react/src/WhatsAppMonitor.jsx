@@ -443,8 +443,8 @@ export default function WhatsAppMonitor() {
                         <Trash2 className="w-3 h-3 text-red-500 animate-pulse" />
                       </div>
                       <div className="font-black text-xs text-red-500 uppercase tracking-widest mb-1 flex items-center gap-2">
-                        <ShieldAlert className="w-3 h-3" /> SİLİNEN MESAJ
-                        YAKALANDI
+                        <ShieldAlert className="w-3 h-3" /> SİLİNEN MESAJ —{" "}
+                        {msg.chat_name || msg.sender?.split("@")[0] || "?"}
                       </div>
                       <div className="text-zinc-200 text-sm italic opacity-80">
                         {msg.text || "[Silinen mesaj]"}
@@ -470,7 +470,9 @@ export default function WhatsAppMonitor() {
                       }`}
                     >
                       <div className="font-black text-xs text-[#00a2ff] uppercase tracking-widest mb-1">
-                        {msg.sender}
+                        {msg.chat_name ||
+                          msg.sender?.split("@")[0] ||
+                          msg.sender}
                       </div>
                       {msg.risk_level !== "none" && (
                         <div className="text-[9px] font-black text-amber-400 uppercase tracking-widest mb-1">

@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import "./i18n.js";
 import WhatsAppMonitor from "./WhatsAppMonitor";
 import DashboardView from "./DashboardView";
 import SetupView from "./SetupView";
@@ -69,6 +71,27 @@ import {
   QrCode,
 } from "lucide-react";
 
+const FeatureDisabled = ({ label }) => (
+  <div className="flex flex-col items-center justify-center h-full text-zinc-600 gap-3">
+    <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center">
+      <span className="text-2xl">🔒</span>
+    </div>
+    <p className="text-sm font-bold">{label} kapalı</p>
+    <p className="text-xs text-zinc-700">
+      Sidebar'dan toggle ile açabilirsiniz.
+    </p>
+  </div>
+);
+
+const FEATURE_KEYS = {
+  WhatsApp: "whatsapp",
+  SMS: "sms",
+  Aramalar: "calls",
+  "Klavye Takibi": "keyboard",
+  "GPS Konumları": "location",
+  "Canlı Ekran": "liveScreen",
+};
+
 const NavItem = ({
   icon: Icon,
   label,
@@ -76,8 +99,14 @@ const NavItem = ({
   customColor,
   activeTab,
   setActiveTab,
+  featureToggles,
+  onToggleFeature,
 }) => {
+  const { t } = useTranslation();
   const isActive = activeTab === label;
+  const featureKey = FEATURE_KEYS[label];
+  const enabled = featureKey ? (featureToggles?.[featureKey] ?? true) : true;
+
   return (
     <button
       onClick={() => setActiveTab(label)}
@@ -85,18 +114,32 @@ const NavItem = ({
         isActive
           ? "bg-zinc-800/80 text-[#00a2ff] border-l-2 border-[#00a2ff] rounded-r-lg font-medium"
           : "text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 rounded-lg"
-      }`}
+      } ${!enabled ? "opacity-50" : ""}`}
     >
       <div className="flex items-center gap-4">
         <Icon
           className={`w-5 h-5 ${isActive ? "text-[#00a2ff]" : customColor || ""}`}
         />
-        <span>{label}</span>
+        <span>{t(`nav.${label}`, label)}</span>
       </div>
-      {badge && (
-        <span className="bg-red-500 text-white text-[10px] w-4 h-4 flex items-center justify-center rounded-full font-bold">
-          {badge}
-        </span>
+      {featureKey && onToggleFeature ? (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleFeature(featureKey);
+          }}
+          className={`relative w-8 h-4 rounded-full transition-colors shrink-0 ${enabled ? "bg-[#00a2ff]" : "bg-zinc-700"}`}
+        >
+          <span
+            className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${enabled ? "translate-x-[18px]" : "translate-x-0.5"}`}
+          />
+        </button>
+      ) : (
+        badge && (
+          <span className="bg-red-500 text-white text-[10px] w-4 h-4 flex items-center justify-center rounded-full font-bold">
+            {badge}
+          </span>
+        )
       )}
     </button>
   );
@@ -168,6 +211,7 @@ class ErrorBoundary extends React.Component {
 }
 
 function App() {
+  const { t, i18n } = useTranslation();
   const [activeTab, setActiveTab] = useState("Dashboard");
   const [isAuthorized, setIsAuthorized] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
@@ -217,6 +261,30 @@ function App() {
     setPasscode("");
   };
 
+  const toggleLang = () => {
+    const next = i18n.language === "tr" ? "en" : "tr";
+    i18n.changeLanguage(next);
+    localStorage.setItem("lang", next);
+  };
+
+  const [featureToggles, setFeatureToggles] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("featureToggles") || "{}");
+    } catch {
+      return {};
+    }
+  });
+
+  const toggleFeature = (key) => {
+    setFeatureToggles((prev) => {
+      const next = { ...prev, [key]: !(prev[key] ?? true) };
+      localStorage.setItem("featureToggles", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const isFeatureOn = (key) => featureToggles[key] ?? true;
+
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const [expandedSections, setExpandedSections] = useState({
@@ -233,12 +301,30 @@ function App() {
     setExpandedSections((prev) => ({ ...prev, [section]: !prev[section] }));
   };
 
+  // 10e — Backend health
+  const [health, setHealth] = useState(null);
+  useEffect(() => {
+    const check = () =>
+      fetch(
+        `${import.meta.env.VITE_API_URL || "http://localhost:8000"}/health`,
+        { headers: { "X-API-Key": import.meta.env.VITE_API_KEY || "" } },
+      )
+        .then((r) => (r.ok ? r.json() : null))
+        .then(setHealth)
+        .catch(() => setHealth(null));
+    check();
+    const id = setInterval(check, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   const navProps = {
     activeTab,
     setActiveTab: (tab) => {
       setActiveTab(tab);
       setSidebarOpen(false);
     },
+    featureToggles,
+    onToggleFeature: toggleFeature,
   };
   const sectionProps = { expandedSections, toggleSection };
 
@@ -247,11 +333,23 @@ function App() {
       case "Dashboard":
         return <DashboardView />;
       case "WhatsApp":
-        return <WhatsAppMonitor />;
+        return isFeatureOn("whatsapp") ? (
+          <WhatsAppMonitor />
+        ) : (
+          <FeatureDisabled label="WhatsApp Takibi" />
+        );
       case "Aramalar":
-        return <CallsView />;
+        return isFeatureOn("calls") ? (
+          <CallsView />
+        ) : (
+          <FeatureDisabled label="Arama Takibi" />
+        );
       case "SMS":
-        return <SmsView />;
+        return isFeatureOn("sms") ? (
+          <SmsView />
+        ) : (
+          <FeatureDisabled label="SMS Takibi" />
+        );
       case "Fotoğraflar":
         return <PhotoView />;
       case "Videolar":
@@ -265,11 +363,19 @@ function App() {
       case "Kelime Takibi":
         return <KeywordView />;
       case "GPS Konumları":
-        return <GpsLocationsView />;
+        return isFeatureOn("location") ? (
+          <GpsLocationsView />
+        ) : (
+          <FeatureDisabled label="Konum Takibi" />
+        );
       case "Yüklü Uygulamalar":
         return <InstalledAppsView />;
       case "Klavye Takibi":
-        return <LoggerView />;
+        return isFeatureOn("keyboard") ? (
+          <LoggerView />
+        ) : (
+          <FeatureDisabled label="Klavye Takibi" />
+        );
       case "Güvenli Bölge":
         return <GeoFencingView />;
       case "Aramaları Engelle":
@@ -291,11 +397,13 @@ function App() {
       case "Zaman Çizelgesi":
         return <TimelineView />;
       case "Canlı Ekran":
-        return (
+        return isFeatureOn("liveScreen") ? (
           <LiveScreenshots
             profileId="default"
             backendUrl={import.meta.env.VITE_API_URL || "http://localhost:8000"}
           />
+        ) : (
+          <FeatureDisabled label="Canlı Ekran" />
         );
       case "Günlük Notlar":
         return <DailyLogsView />;
@@ -334,6 +442,13 @@ function App() {
   if (!isAuthorized) {
     return (
       <div className="h-screen w-screen bg-zinc-950 flex items-center justify-center font-sans">
+        <button
+          onClick={toggleLang}
+          className="absolute top-4 right-4 text-lg hover:scale-110 transition-transform"
+          title={i18n.language === "tr" ? "Switch to English" : "Türkçeye geç"}
+        >
+          {i18n.language === "tr" ? "🇬🇧" : "🇹🇷"}
+        </button>
         <div className="w-80 p-8 bg-zinc-900 rounded-2xl border border-zinc-800 shadow-2xl flex flex-col items-center">
           <div className="w-16 h-16 bg-[#00a2ff]/10 rounded-full flex items-center justify-center mb-6">
             <Lock
@@ -342,10 +457,10 @@ function App() {
           </div>
 
           <h2 className="text-xl font-bold text-white mb-2">
-            {showRecovery ? "Kurtarma Modu" : "Güvenlik Girişi"}
+            {showRecovery ? t("login.recoveryTitle") : t("login.title")}
           </h2>
           <p className="text-xs text-zinc-500 mb-8 text-center uppercase tracking-widest font-semibold">
-            {showRecovery ? "Master Key Gerekli" : "Dashboard Erişimi"}
+            {showRecovery ? t("login.recoverySubtitle") : t("login.subtitle")}
           </p>
 
           {!showRecovery ? (
@@ -355,19 +470,19 @@ function App() {
                   type="password"
                   value={passcode}
                   onChange={(e) => setPasscode(e.target.value)}
-                  placeholder="Geçiş Şifresi"
+                  placeholder={t("login.placeholder")}
                   className={`w-full bg-zinc-950 border ${error ? "border-red-500" : "border-zinc-800"} rounded-xl px-4 py-3 text-center text-white text-lg tracking-[0.5em] focus:outline-none focus:border-[#00a2ff] transition-all`}
                   autoFocus
                 />
                 {error && (
                   <p className="text-[10px] text-red-500 mt-2 text-center font-bold">
-                    Hatalı şifre!
+                    {t("login.wrongPassword")}
                   </p>
                 )}
               </div>
               {isLocked() && (
                 <p className="text-[10px] text-orange-400 text-center font-bold">
-                  Çok fazla deneme. 30 saniye bekleyin.
+                  {t("login.tooManyAttempts")}
                 </p>
               )}
               <button
@@ -375,7 +490,7 @@ function App() {
                 disabled={isLocked()}
                 className="w-full bg-[#00a2ff] hover:bg-[#008de6] disabled:opacity-40 text-white font-bold py-3 rounded-xl transition-all active:scale-95 shadow-lg shadow-[#00a2ff]/20"
               >
-                Giriş Yap
+                {t("login.submit")}
               </button>
               <button
                 type="button"
@@ -385,7 +500,7 @@ function App() {
                 }}
                 className="w-full text-zinc-600 text-[10px] font-bold uppercase hover:text-zinc-400 transition-colors"
               >
-                Şifremi Unuttum?
+                {t("login.forgotPassword")}
               </button>
             </form>
           ) : (
@@ -395,13 +510,13 @@ function App() {
                   type="text"
                   value={recoveryCode}
                   onChange={(e) => setRecoveryCode(e.target.value)}
-                  placeholder="FS-MONITOR-XXX-..."
+                  placeholder={t("login.recoveryPlaceholder")}
                   className={`w-full bg-zinc-950 border ${error ? "border-red-500" : "border-zinc-800"} rounded-xl px-4 py-3 text-center text-white text-[11px] font-mono tracking-wider focus:outline-none focus:border-emerald-500 transition-all`}
                   autoFocus
                 />
                 {error && (
                   <p className="text-[10px] text-red-500 mt-2 text-center font-bold">
-                    Geçersiz Master Key!
+                    {t("login.invalidKey")}
                   </p>
                 )}
               </div>
@@ -409,7 +524,7 @@ function App() {
                 type="submit"
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl transition-all active:scale-95 shadow-lg shadow-emerald-500/20"
               >
-                Sistemi Kurtar
+                {t("login.recover")}
               </button>
               <button
                 type="button"
@@ -419,14 +534,16 @@ function App() {
                 }}
                 className="w-full text-zinc-600 text-[10px] font-bold uppercase hover:text-zinc-400 transition-colors"
               >
-                Giriş Ekranına Dön
+                {t("login.backToLogin")}
               </button>
             </form>
           )}
 
           <div className="mt-8 flex items-center gap-2 text-zinc-600 text-[10px] font-bold uppercase tracking-wider">
             <Shield className="w-3 h-3" />{" "}
-            {showRecovery ? "Recovery Protocol" : "Secure Connection"}
+            {showRecovery
+              ? t("login.recoveryProtocol")
+              : t("login.secureConnection")}
           </div>
         </div>
       </div>
@@ -451,13 +568,33 @@ function App() {
               alt="Logo"
               className="w-8 h-8 rounded-full border border-white/30"
             />{" "}
-            Sessiz Muhafız
+            {t("appName")}
           </div>
-          <div className="flex flex-col items-end">
-            <span className="text-[10px] font-bold opacity-80 leading-none">
-              AJAN
-            </span>
-            <span className="text-xs font-black">V2.4.6</span>
+          <div className="flex items-center gap-2">
+            {/* 10e — Health noktası */}
+            <div
+              title={
+                health
+                  ? `iCloud:${health.services?.icloud ? "✓" : "✗"} WA:${health.services?.whatsapp ? "✓" : "✗"} Android:${health.services?.android ? "✓" : "✗"}`
+                  : "Backend bağlanamıyor"
+              }
+              className={`w-2.5 h-2.5 rounded-full border border-white/30 ${health ? "bg-emerald-400" : "bg-red-400"}`}
+            />
+            <button
+              onClick={toggleLang}
+              className="text-base hover:scale-110 transition-transform"
+              title={
+                i18n.language === "tr" ? "Switch to English" : "Türkçeye geç"
+              }
+            >
+              {i18n.language === "tr" ? "🇬🇧" : "🇹🇷"}
+            </button>
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] font-bold opacity-80 leading-none">
+                {t("agent")}
+              </span>
+              <span className="text-xs font-black">{t("version")}</span>
+            </div>
           </div>
         </div>
 
@@ -465,11 +602,11 @@ function App() {
           <div className="flex items-center gap-3">
             <Smartphone className="w-5 h-5 text-zinc-400" />
             <span className="text-zinc-200 text-sm font-medium">
-              Sessiz Ajan Aktif
+              {t("activeAgent")}
             </span>
           </div>
           <span className="text-[9px] bg-[#00a2ff] text-white px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
-            Premium
+            {t("premium")}
           </span>
         </div>
 
@@ -479,7 +616,7 @@ function App() {
 
         <div className="px-3 mb-2">
           <SectionHeader
-            title="Canlı İzleme"
+            title={t("sections.live")}
             sectionKey="live"
             {...sectionProps}
           />
@@ -509,7 +646,7 @@ function App() {
 
         <div className="px-3 mb-2">
           <SectionHeader
-            title="İstihbarat & Veri"
+            title={t("sections.general")}
             sectionKey="general"
             {...sectionProps}
           />
@@ -557,7 +694,7 @@ function App() {
 
         <div className="px-3 mb-2">
           <SectionHeader
-            title="Konumlar"
+            title={t("sections.locations")}
             sectionKey="locations"
             {...sectionProps}
           />
@@ -571,7 +708,7 @@ function App() {
 
         <div className="px-3 mb-2">
           <SectionHeader
-            title="Sosyal Ağlar"
+            title={t("sections.social")}
             sectionKey="social"
             {...sectionProps}
           />
@@ -595,7 +732,7 @@ function App() {
 
         <div className="px-3 mb-2">
           <SectionHeader
-            title="İnternet Kullanımı"
+            title={t("sections.internet")}
             sectionKey="internet"
             {...sectionProps}
           />
@@ -615,7 +752,7 @@ function App() {
 
         <div className="px-3 mb-2">
           <SectionHeader
-            title="Güvenlik"
+            title={t("sections.security")}
             sectionKey="security"
             {...sectionProps}
           />
@@ -633,7 +770,7 @@ function App() {
 
         <div className="px-3 mb-6">
           <SectionHeader
-            title="Kısıtlamalar"
+            title={t("sections.restricted")}
             sectionKey="restricted"
             {...sectionProps}
           />
@@ -678,7 +815,7 @@ function App() {
           >
             <Settings className="w-5 h-5" />
             <span className="font-bold text-sm uppercase tracking-wider">
-              Ayarlar
+              {t("nav.Ayarlar")}
             </span>
           </button>
           <div className="p-4">
@@ -688,7 +825,7 @@ function App() {
             >
               <LogOut className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
               <span className="font-bold text-xs uppercase tracking-widest">
-                Sistemi Kapat
+                {t("nav.Sistemi Kapat")}
               </span>
             </button>
           </div>
@@ -704,7 +841,7 @@ function App() {
             <Menu className="w-5 h-5" />
           </button>
           <span className="ml-3 text-sm font-bold text-zinc-200 truncate">
-            {activeTab}
+            {t(`nav.${activeTab}`, activeTab)}
           </span>
         </div>
         <ErrorBoundary>{renderContent()}</ErrorBoundary>

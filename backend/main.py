@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import json
 import time
 import asyncio
 from datetime import datetime, timedelta, timezone
@@ -82,7 +83,7 @@ app = FastAPI(title="Aile Güvenliği Paneli")
 # Duplicate keystroke önleme: (profile_id, app_name) → (text, timestamp)
 _last_keystroke: dict = {}
 app.add_middleware(CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:8000", "null", "app://.", "file://", "https://slides-east-euro-sounds.trycloudflare.com"],
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:3000", "http://localhost:8000", "null", "app://.", "file://", "https://slides-east-euro-sounds.trycloudflare.com", "*"],
     allow_origin_regex=r"https?://192\.168\.\d{1,3}\.\d{1,3}(:\d+)?",
     allow_methods=["*"],
     allow_headers=["*"],
@@ -895,15 +896,21 @@ async def get_comms_summary(profile_id: str):
                 high = [m for m in flagged if m.get("risk_level") == "high"]
                 deleted = [m for m in flagged if m.get("is_deleted")]
                 if high:
+                    top_sender = high[0].get("sender", "")
+                    top_name = _resolve_contact_name(profile_id, top_sender) if top_sender else ""
                     alerts.append({"id": "wa_high", "level": "high",
                         "title": "WhatsApp Riskli Mesaj",
                         "description": f"{len(high)} yüksek riskli WhatsApp mesajı.",
-                        "source": "WhatsApp", "count": len(high)})
+                        "source": "WhatsApp", "count": len(high),
+                        "contact_name": top_name or top_sender})
                 if deleted:
+                    top_sender = deleted[0].get("sender", "")
+                    top_name = _resolve_contact_name(profile_id, top_sender) if top_sender else ""
                     alerts.append({"id": "wa_deleted", "level": "medium",
                         "title": "Silinen WhatsApp Mesajı",
                         "description": f"{len(deleted)} mesaj silindi.",
-                        "source": "WhatsApp", "count": len(deleted)})
+                        "source": "WhatsApp", "count": len(deleted),
+                        "contact_name": top_name or top_sender})
     except Exception:
         pass
     # Backup SMS/Calls (mevcut DB alarmları)
@@ -1457,6 +1464,21 @@ async def get_anomalies(profile_id: str):
 
 # ── Communication Map ────────────────────────────────────────────────────────
 
+def _resolve_contact_name(profile_id: str, sender: str) -> str:
+    """sender (telefon/JID) → rehberdeki isim. Bulunamazsa sender döner."""
+    contacts = _android_contacts.get(profile_id, [])
+    if not contacts:
+        return sender
+    # JID'den telefon numarasını çıkar: "905551234567@s.whatsapp.net" → "905551234567"
+    phone = sender.split("@")[0].lstrip("+").replace(" ", "").replace("-", "")
+    for c in contacts:
+        for p in (c.get("phones") or [c.get("phone_number", "")]):
+            clean = str(p).lstrip("+").replace(" ", "").replace("-", "")
+            if clean and (clean == phone or clean.endswith(phone[-9:]) or phone.endswith(clean[-9:])):
+                return c.get("name") or sender
+    return sender
+
+
 @app.get("/api/contacts/{profile_id}/map")
 async def contacts_map(profile_id: str, limit: int = 50):
     """SMS + WhatsApp mesajlarından iletişim frekans haritası döndürür."""
@@ -1519,8 +1541,10 @@ async def contacts_map(profile_id: str, limit: int = 50):
             risk = "medium"
         else:
             risk = "none"
+        resolved = _resolve_contact_name(profile_id, sender)
         result.append({
             "name": sender,
+            "contact_name": resolved,
             "message_count": total,
             "flagged_count": flagged,
             "deleted_count": deleted,
@@ -1531,6 +1555,27 @@ async def contacts_map(profile_id: str, limit: int = 50):
 
     result.sort(key=lambda x: x["message_count"], reverse=True)
     return result[:limit]
+
+
+# ── Android Rehber ───────────────────────────────────────────────────────────
+
+_android_contacts: dict = {}  # {profile_id: [{"contact_id", "name", "phone_number", ...}]}
+
+
+@app.post("/api/android-contacts/{profile_id}")
+async def receive_android_contacts(profile_id: str, body: dict):
+    """Android rehber listesini alır ve hafızada tutar."""
+    _require_profile(profile_id)
+    contacts = body.get("contacts", [])
+    _android_contacts[profile_id] = contacts
+    return {"status": "ok", "count": len(contacts)}
+
+
+@app.get("/api/android-contacts/{profile_id}")
+async def get_android_contacts(profile_id: str):
+    """Daha önce gönderilen Android rehber listesini döndürür."""
+    _require_profile(profile_id)
+    return _android_contacts.get(profile_id, [])
 
 
 # ── Android Agent Bildirimleri ────────────────────────────────────────────────
@@ -1573,6 +1618,116 @@ async def list_deleted_android_messages(profile_id: str, limit: int = 100):
     """Silinen Android bildirim mesajlarını döndürür."""
     _require_profile(profile_id)
     return db_service.get_android_notifications(profile_id, limit=limit, deleted_only=True)
+
+
+# ── Profil Ayarları (Telegram, bildirim vb.) ──────────────────────────────────
+
+_profile_settings: dict = {}  # {profile_id: {telegram_token, telegram_chat_id, ...}}
+_SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "data", "profile_settings.json")
+
+
+def _load_profile_settings():
+    try:
+        if os.path.exists(_SETTINGS_FILE):
+            with open(_SETTINGS_FILE, "r") as f:
+                _profile_settings.update(json.load(f))
+    except Exception:
+        pass
+
+
+def _save_profile_settings():
+    try:
+        os.makedirs(os.path.dirname(_SETTINGS_FILE), exist_ok=True)
+        with open(_SETTINGS_FILE, "w") as f:
+            json.dump(_profile_settings, f)
+    except Exception:
+        pass
+
+
+_load_profile_settings()
+
+
+@app.get("/api/settings/{profile_id}")
+async def get_profile_settings(profile_id: str):
+    """Profil ayarlarını döndürür (telegram token dahil)."""
+    _require_profile(profile_id)
+    s = _profile_settings.get(profile_id, {})
+    return {
+        "telegram_token": s.get("telegram_token", ""),
+        "telegram_chat_id": s.get("telegram_chat_id", ""),
+    }
+
+
+@app.post("/api/settings/{profile_id}")
+async def save_profile_settings(profile_id: str, body: dict):
+    """Profil ayarlarını kaydeder ve Telegram'ı günceller."""
+    _require_profile(profile_id)
+    current = _profile_settings.get(profile_id, {})
+    if "telegram_token" in body:
+        current["telegram_token"] = body["telegram_token"]
+    if "telegram_chat_id" in body:
+        current["telegram_chat_id"] = body["telegram_chat_id"]
+    _profile_settings[profile_id] = current
+    _save_profile_settings()
+    # telegram_notifier'ı runtime'da güncelle
+    if current.get("telegram_token"):
+        import services.telegram_notifier as _tn
+        _tn.TELEGRAM_TOKEN = current["telegram_token"]
+        _tn.TELEGRAM_CHAT_ID = current.get("telegram_chat_id", "")
+    return {"status": "ok"}
+
+
+# ── Uygulama Şifresi (Device Admin Koruma) ────────────────────────────────────
+
+_app_passwords: dict = {}
+_APP_PASS_FILE = os.path.join(os.path.dirname(__file__), "data", "app_passwords.json")
+
+def _load_app_passwords():
+    try:
+        if os.path.exists(_APP_PASS_FILE):
+            with open(_APP_PASS_FILE, "r") as f:
+                _app_passwords.update(json.load(f))
+    except Exception:
+        pass
+
+def _save_app_passwords():
+    try:
+        os.makedirs(os.path.dirname(_APP_PASS_FILE), exist_ok=True)
+        with open(_APP_PASS_FILE, "w") as f:
+            json.dump(_app_passwords, f)
+    except Exception:
+        pass
+
+_load_app_passwords()
+
+
+@app.get("/api/app-password/{profile_id}")
+async def get_app_password_status(profile_id: str):
+    """Profil için uygulama şifresi ayarlanmış mı döndürür."""
+    _require_profile(profile_id)
+    return {"has_password": bool(_app_passwords.get(profile_id))}
+
+
+@app.post("/api/app-password/{profile_id}")
+async def set_app_password(profile_id: str, body: dict):
+    """Profil için uygulama şifresini ayarlar veya sıfırlar."""
+    _require_profile(profile_id)
+    password = body.get("password", "").strip()
+    if password:
+        _app_passwords[profile_id] = password
+    else:
+        _app_passwords.pop(profile_id, None)
+    _save_app_passwords()
+    return {"status": "ok", "has_password": bool(password)}
+
+
+@app.post("/api/app-password/{profile_id}/verify")
+async def verify_app_password(profile_id: str, body: dict):
+    """Girilen şifrenin doğru olup olmadığını kontrol eder."""
+    _require_profile(profile_id)
+    entered = body.get("password", "")
+    stored = _app_passwords.get(profile_id, "")
+    return {"valid": bool(stored and entered == stored)}
 
 
 # ── WhatsApp Agent Proxy (CORS-safe, frontend → backend → WA agent) ───────────

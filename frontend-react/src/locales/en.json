@@ -1,0 +1,68 @@
+{
+  "appName": "Silent Guardian",
+  "version": "V2.4.6",
+  "agent": "AGENT",
+  "activeAgent": "Silent Agent Active",
+  "premium": "Premium",
+
+  "login": {
+    "title": "Security Login",
+    "subtitle": "Dashboard Access",
+    "recoveryTitle": "Recovery Mode",
+    "recoverySubtitle": "Master Key Required",
+    "placeholder": "Passcode",
+    "recoveryPlaceholder": "FS-MONITOR-XXX-...",
+    "submit": "Sign In",
+    "recover": "Recover System",
+    "forgotPassword": "Forgot Password?",
+    "backToLogin": "Back to Login",
+    "wrongPassword": "Incorrect passcode!",
+    "invalidKey": "Invalid Master Key!",
+    "tooManyAttempts": "Too many attempts. Wait 30 seconds.",
+    "secureConnection": "Secure Connection",
+    "recoveryProtocol": "Recovery Protocol"
+  },
+
+  "sections": {
+    "live": "Live Monitoring",
+    "general": "Intelligence & Data",
+    "locations": "Locations",
+    "social": "Social Networks",
+    "internet": "Internet Usage",
+    "security": "Security",
+    "restricted": "Restrictions"
+  },
+
+  "nav": {
+    "Dashboard": "Dashboard",
+    "Canlı Kontrol": "Live Control",
+    "Canlı Ekran": "Live Screen",
+    "Zaman Çizelgesi": "Timeline",
+    "Rehber": "Contacts",
+    "SMS": "SMS",
+    "Aramalar": "Calls",
+    "Etkinlikler": "Events",
+    "Fotoğraflar": "Photos",
+    "Videolar": "Videos",
+    "Wi-Fi Ağları": "Wi-Fi Networks",
+    "Kelime Takibi": "Keyword Tracking",
+    "Klavye Takibi": "Keylogger",
+    "Günlük Notlar": "Daily Notes",
+    "Yüklü Uygulamalar": "Installed Apps",
+    "Ekran Süresi": "Screen Time",
+    "GPS Konumları": "GPS Locations",
+    "Güvenli Bölge": "Safe Zone",
+    "WhatsApp": "WhatsApp",
+    "WhatsApp Kurulum": "WhatsApp Setup",
+    "Tarayıcı Geçmişi": "Browser History",
+    "Yer İmleri": "Bookmarks",
+    "E-Posta": "Email",
+    "Risk Raporu": "Risk Report",
+    "Aramaları Engelle": "Block Calls",
+    "Wi-Fi Engelle": "Block Wi-Fi",
+    "Web Sitelerini Engelle": "Block Websites",
+    "Uygulamaları Engelle": "Block Apps",
+    "Ayarlar": "Settings",
+    "Sistemi Kapat": "Sign Out"
+  }
+}

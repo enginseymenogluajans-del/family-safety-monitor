@@ -6,12 +6,9 @@ import {
   Download,
   MoreVertical,
   Plus,
-  Edit2,
   X,
   MapPin,
   Maximize2,
-  User,
-  Ban,
   MonitorPlay,
   Video,
   Mic,
@@ -24,7 +21,6 @@ import {
   Activity,
   ShieldAlert,
   Lock,
-  Key,
   RefreshCw,
 } from "lucide-react";
 
@@ -3720,12 +3716,12 @@ export const ContactsView = () => {
                   <div
                     className={`w-11 h-11 rounded-xl border flex items-center justify-center text-sm font-black shrink-0 ${RISK_AVATAR[c.risk_level]}`}
                   >
-                    {c.name[0]?.toUpperCase() ?? "?"}
+                    {(c.contact_name || c.name)[0]?.toUpperCase() ?? "?"}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-bold text-zinc-100 truncate">
-                        {c.name}
+                        {c.contact_name || c.name}
                       </span>
                       {c.risk_level !== "none" && (
                         <span
@@ -3735,6 +3731,11 @@ export const ContactsView = () => {
                         </span>
                       )}
                     </div>
+                    {c.contact_name && c.contact_name !== c.name && (
+                      <div className="text-[10px] text-zinc-500 font-mono truncate mt-0.5">
+                        {c.name}
+                      </div>
+                    )}
                     <div className="flex gap-1 mt-0.5 flex-wrap">
                       {c.sources.map((s) => (
                         <span
@@ -4459,6 +4460,59 @@ export const SettingsView = () => {
   const [config, setConfig] = useState(null);
   const [saving, setSaving] = useState(false);
 
+  // 10a — Bildirim ayarları (localStorage)
+  const [notifSound, setNotifSound] = useState(
+    () => localStorage.getItem("notifSound") !== "false",
+  );
+  const [notifVibrate, setNotifVibrate] = useState(
+    () => localStorage.getItem("notifVibrate") !== "false",
+  );
+
+  // 10c — Otomatik rapor (localStorage)
+  const [reportSchedule, setReportSchedule] = useState(
+    () => localStorage.getItem("reportSchedule") || "off",
+  );
+  const [reportHour, setReportHour] = useState(() =>
+    parseInt(localStorage.getItem("reportHour") || "8"),
+  );
+
+  // 10d — Telegram entegrasyonu
+  const [telegramToken, setTelegramToken] = useState("");
+  const [telegramChatId, setTelegramChatId] = useState("");
+  const [telegramSaving, setTelegramSaving] = useState(false);
+  const [telegramStatus, setTelegramStatus] = useState(null);
+
+  // 10c — Otomatik rapor interval'i
+  useEffect(() => {
+    if (reportSchedule === "off") return;
+    const checkAndRun = () => {
+      const now = new Date();
+      if (now.getHours() === reportHour && now.getMinutes() === 0) {
+        if (
+          reportSchedule === "daily" ||
+          (reportSchedule === "weekly" && now.getDay() === 1)
+        ) {
+          apiFetch(`${COMMS_API}/api/risk/${COMMS_PROFILE}/report`).catch(
+            () => {},
+          );
+        }
+      }
+    };
+    const id = setInterval(checkAndRun, 60_000);
+    return () => clearInterval(id);
+  }, [reportSchedule, reportHour]);
+
+  // 10d — Telegram config'i backend'den yükle
+  useEffect(() => {
+    apiFetch(`${COMMS_API}/api/settings/${COMMS_PROFILE}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.telegram_token) setTelegramToken(d.telegram_token);
+        if (d?.telegram_chat_id) setTelegramChatId(d.telegram_chat_id);
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     apiFetch(`${COMMS_API}/api/restrictions/${COMMS_PROFILE}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -4603,6 +4657,174 @@ export const SettingsView = () => {
                 />
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* 10a — Bildirim Sesi & Titreşim */}
+        <div className="premium-card p-8">
+          <h3 className="text-xl font-black mb-6 flex items-center gap-3 text-zinc-100 uppercase tracking-tighter">
+            <span className="text-2xl">🔔</span> Bildirim Ayarları
+          </h3>
+          <div className="space-y-4">
+            {[
+              {
+                key: "notifSound",
+                label: "Bildirim Sesi",
+                desc: "Risk uyarılarında ses çalar.",
+                val: notifSound,
+                set: (v) => {
+                  setNotifSound(v);
+                  localStorage.setItem("notifSound", v);
+                },
+              },
+              {
+                key: "notifVibrate",
+                label: "Titreşim",
+                desc: "Destekleyen cihazlarda titreşim verir.",
+                val: notifVibrate,
+                set: (v) => {
+                  setNotifVibrate(v);
+                  localStorage.setItem("notifVibrate", v);
+                },
+              },
+            ].map(({ key, label, desc, val, set }) => (
+              <div
+                key={key}
+                className="flex items-center justify-between p-5 bg-zinc-950/50 rounded-2xl border border-zinc-800 hover:border-[#00a2ff]/30 transition-all"
+              >
+                <div>
+                  <p className="font-bold text-zinc-200">{label}</p>
+                  <p className="text-[11px] text-zinc-500 mt-1">{desc}</p>
+                </div>
+                <button
+                  onClick={() => set(!val)}
+                  className={`w-12 h-6 rounded-full relative transition-all duration-300 shadow-lg ${val ? "bg-[#00a2ff] shadow-[#00a2ff]/20" : "bg-zinc-800"}`}
+                >
+                  <div
+                    className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all duration-300 ${val ? "right-1" : "left-1"}`}
+                  />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 10c — Otomatik Rapor Zamanlaması */}
+        <div className="premium-card p-8">
+          <h3 className="text-xl font-black mb-6 flex items-center gap-3 text-zinc-100 uppercase tracking-tighter">
+            <span className="text-2xl">📅</span> Otomatik Rapor
+          </h3>
+          <div className="space-y-4">
+            <div className="flex gap-2 flex-wrap">
+              {["off", "daily", "weekly"].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => {
+                    setReportSchedule(s);
+                    localStorage.setItem("reportSchedule", s);
+                  }}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-colors ${reportSchedule === s ? "bg-[#00a2ff] text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"}`}
+                >
+                  {s === "off"
+                    ? "Kapalı"
+                    : s === "daily"
+                      ? "Günlük"
+                      : "Haftalık"}
+                </button>
+              ))}
+            </div>
+            {reportSchedule !== "off" && (
+              <div className="flex items-center gap-3 p-4 bg-zinc-900 rounded-xl border border-zinc-800">
+                <span className="text-zinc-400 text-sm">Saat:</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={23}
+                  value={reportHour}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value) || 0;
+                    setReportHour(v);
+                    localStorage.setItem("reportHour", v);
+                  }}
+                  className="w-16 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-white text-sm text-center focus:border-[#00a2ff] outline-none"
+                />
+                <span className="text-zinc-500 text-xs">:00</span>
+                <span className="text-zinc-600 text-[10px] ml-2">
+                  Rapor otomatik olarak backend&#39;e tetiklenir.
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 10d — Telegram Entegrasyonu */}
+        <div className="premium-card p-8">
+          <h3 className="text-xl font-black mb-6 flex items-center gap-3 text-zinc-100 uppercase tracking-tighter">
+            <Send className="w-6 h-6 text-blue-400" /> Telegram Entegrasyonu
+          </h3>
+          <div className="space-y-4">
+            <div>
+              <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest block mb-2">
+                Bot Token
+              </label>
+              <input
+                type="password"
+                value={telegramToken}
+                onChange={(e) => setTelegramToken(e.target.value)}
+                placeholder="1234567890:ABCDef..."
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-zinc-200 focus:border-[#00a2ff] outline-none transition-all font-mono"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-black text-zinc-500 uppercase tracking-widest block mb-2">
+                Chat ID
+              </label>
+              <input
+                type="text"
+                value={telegramChatId}
+                onChange={(e) => setTelegramChatId(e.target.value)}
+                placeholder="123456789"
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-zinc-200 focus:border-[#00a2ff] outline-none transition-all font-mono"
+              />
+            </div>
+            <button
+              disabled={telegramSaving}
+              onClick={async () => {
+                setTelegramSaving(true);
+                try {
+                  const r = await apiFetch(
+                    `${COMMS_API}/api/settings/${COMMS_PROFILE}`,
+                    {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        telegram_token: telegramToken,
+                        telegram_chat_id: telegramChatId,
+                      }),
+                    },
+                  );
+                  setTelegramStatus(r.ok ? "ok" : "error");
+                } catch {
+                  setTelegramStatus("error");
+                } finally {
+                  setTelegramSaving(false);
+                  setTimeout(() => setTelegramStatus(null), 3000);
+                }
+              }}
+              className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-black text-xs uppercase tracking-widest transition-colors"
+            >
+              {telegramSaving ? "Kaydediliyor..." : "Kaydet & Test Et"}
+            </button>
+            {telegramStatus === "ok" && (
+              <p className="text-emerald-400 text-xs font-bold text-center">
+                ✓ Telegram ayarları kaydedildi
+              </p>
+            )}
+            {telegramStatus === "error" && (
+              <p className="text-red-400 text-xs font-bold text-center">
+                ✗ Kaydetme başarısız
+              </p>
+            )}
           </div>
         </div>
 

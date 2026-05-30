@@ -15,6 +15,9 @@ import {
   Shield,
   AlertCircle,
   AtSign,
+  Smartphone,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 const PROFILE_ID = "default";
@@ -246,6 +249,7 @@ function BackupStep() {
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [showHelp, setShowHelp] = useState(false);
 
   const handleConnect = async (e) => {
     e.preventDefault();
@@ -281,10 +285,11 @@ function BackupStep() {
         </div>
         <div>
           <h3 className="text-white font-bold text-lg">
-            Yerel iTunes / Finder Backup
+            Telefon Yedek Dosyası
           </h3>
           <p className="text-zinc-500 text-sm">
-            SMS, arama geçmişi ve yüklü uygulamalar
+            Bilgisayarınıza daha önce telefon yedeği aldıysanız, o klasörü
+            seçin. SMS, arama geçmişi ve uygulama listesi otomatik okunur.
           </p>
         </div>
       </div>
@@ -310,18 +315,49 @@ function BackupStep() {
             />
             <Folder className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-600 pointer-events-none" />
           </div>
-          <div className="mt-2 space-y-1 bg-zinc-800/40 rounded-lg p-3">
-            <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider mb-1">
-              Varsayılan Konumlar
-            </p>
-            <p className="text-[11px] text-zinc-500 font-mono">
-              Mac: ~/Library/Application Support/MobileSync/Backup/
-            </p>
-            <p className="text-[11px] text-zinc-500 font-mono">
-              Windows: C:\Users\[ad]\AppData\Roaming\Apple
-              Computer\MobileSync\Backup\
-            </p>
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowHelp(!showHelp)}
+            className="mt-2 flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            {showHelp ? (
+              <ChevronUp className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5" />
+            )}
+            Nasıl bulunur?
+          </button>
+          {showHelp && (
+            <div className="mt-2 space-y-2 bg-zinc-800/40 border border-zinc-700/50 rounded-lg p-4">
+              <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-2">
+                Varsayılan Yedek Klasörü Konumları
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-[10px] text-zinc-500 mb-1 font-semibold">
+                    Windows:
+                  </p>
+                  <p className="text-[11px] text-zinc-400 font-mono bg-zinc-900 px-2 py-1 rounded">
+                    C:\Users\[kullanıcı adı]\AppData\Roaming\Apple
+                    Computer\MobileSync\Backup\
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-zinc-500 mb-1 font-semibold">
+                    Mac:
+                  </p>
+                  <p className="text-[11px] text-zinc-400 font-mono bg-zinc-900 px-2 py-1 rounded">
+                    ~/Library/Application Support/MobileSync/Backup/
+                  </p>
+                </div>
+              </div>
+              <p className="text-[10px] text-zinc-600 mt-2">
+                iTunes veya Finder ile telefonunuzu yedeklediyseniz bu klasörde
+                bir veya birden fazla alt klasör göreceksiniz. O alt klasörün
+                tam yolunu girin.
+              </p>
+            </div>
+          )}
         </div>
 
         <div>
@@ -374,7 +410,6 @@ function BackupStep() {
 function WhatsAppQRStep() {
   const [qrData, setQrData] = useState(null);
   const [connected, setConnected] = useState(false);
-  const [waiting, setWaiting] = useState(true);
   const [agentDown, setAgentDown] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
 
@@ -386,11 +421,9 @@ function WhatsAppQRStep() {
       if (data.connected) {
         setConnected(true);
         setQrData(null);
-        setWaiting(false);
       } else {
         setConnected(false);
         setQrData(data.qr_base64 || null);
-        setWaiting(!data.qr_base64 && !data.error);
       }
       setLastRefresh(new Date());
     } catch {
@@ -400,7 +433,7 @@ function WhatsAppQRStep() {
 
   useEffect(() => {
     fetchQR();
-    const id = setInterval(fetchQR, 30000);
+    const id = setInterval(fetchQR, 5000);
     return () => clearInterval(id);
   }, [fetchQR]);
 
@@ -438,21 +471,6 @@ function WhatsAppQRStep() {
             Mesajlar aktif olarak izleniyor
           </p>
         </div>
-      ) : agentDown ? (
-        <div className="flex flex-col items-center py-10">
-          <AlertCircle className="w-12 h-12 text-red-400 mb-3" />
-          <p className="text-red-400 font-bold text-lg">
-            WhatsApp Agent Çalışmıyor
-          </p>
-          <div className="mt-4 bg-zinc-800/60 rounded-xl p-4 text-center">
-            <p className="text-zinc-400 text-xs mb-2 font-bold uppercase tracking-wider">
-              Terminalde çalıştırın:
-            </p>
-            <code className="text-[#00a2ff] text-sm font-mono">
-              cd whatsapp-agent && node index.js
-            </code>
-          </div>
-        </div>
       ) : qrData ? (
         <div className="flex flex-col items-center">
           <div className="bg-white p-3 rounded-2xl shadow-2xl mb-5">
@@ -468,7 +486,7 @@ function WhatsAppQRStep() {
           </p>
           {lastRefresh && (
             <p className="text-zinc-600 text-xs mt-4">
-              Son güncelleme: {lastRefresh.toLocaleTimeString("tr-TR")} · 30
+              Son güncelleme: {lastRefresh.toLocaleTimeString("tr-TR")} · 5
               saniyede bir otomatik yenilenir
             </p>
           )}
@@ -476,17 +494,165 @@ function WhatsAppQRStep() {
       ) : (
         <div className="flex flex-col items-center py-10">
           <div className="w-14 h-14 border-4 border-emerald-500/20 border-t-emerald-500 rounded-full animate-spin mb-4" />
-          <p className="text-zinc-400 font-bold">QR Kodu Oluşturuluyor</p>
+          <p className="text-zinc-400 font-bold">Agent Başlatılıyor</p>
           <p className="text-zinc-600 text-sm mt-2">
-            WhatsApp Agent başlatılıyor, lütfen bekleyin...
+            WhatsApp Agent bekleniyor, 5 saniyede bir kontrol ediliyor...
           </p>
+          {agentDown && (
+            <div className="mt-4 bg-zinc-800/60 rounded-xl p-3 text-center">
+              <p className="text-zinc-600 text-[10px] mb-1 font-bold uppercase tracking-wider">
+                Bağlanamıyorsa terminalde çalıştırın:
+              </p>
+              <code className="text-zinc-500 text-xs font-mono">
+                cd whatsapp-agent &amp;&amp; node index.js
+              </code>
+            </div>
+          )}
         </div>
       )}
     </Card>
   );
 }
 
-// ── Part 4: Connection Status Panel ──────────────────────────────────────────
+// ── Part 4: Android Device Panel ─────────────────────────────────────────────
+
+function AndroidStep() {
+  const [device, setDevice] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const fetchDevice = useCallback(async () => {
+    try {
+      const r = await apiFetch(
+        `${BACKEND_URL}/api/android-device/${PROFILE_ID}`,
+      );
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      setDevice(await r.json());
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+      setDevice(null);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDevice();
+    const id = setInterval(fetchDevice, 10000);
+    return () => clearInterval(id);
+  }, [fetchDevice]);
+
+  const isConnected = device?.connected === true;
+
+  return (
+    <Card>
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center">
+            <Smartphone className="w-5 h-5 text-green-400" />
+          </div>
+          <div>
+            <h3 className="text-white font-bold text-lg">Android Bağlantısı</h3>
+            <p className="text-zinc-500 text-sm">
+              Android cihaz ajan durumu ve bilgileri
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={() => {
+            setLoading(true);
+            fetchDevice();
+          }}
+          className="flex items-center gap-2 text-zinc-400 hover:text-zinc-200 text-xs font-bold border border-zinc-700 hover:border-zinc-600 px-3 py-1.5 rounded-lg transition-all"
+        >
+          <RefreshCw className="w-3.5 h-3.5" /> Yenile
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-10">
+          <div className="w-10 h-10 border-4 border-zinc-700 border-t-green-500 rounded-full animate-spin" />
+        </div>
+      ) : isConnected ? (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
+            <div className="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-pulse" />
+            <span className="text-emerald-400 font-bold">
+              Android Ajan Aktif
+            </span>
+            {device.device_name && (
+              <span className="ml-auto text-zinc-300 text-sm font-medium">
+                {device.device_name}
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            {device.model && (
+              <div className="bg-zinc-800/50 rounded-lg p-3">
+                <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">
+                  Model
+                </p>
+                <p className="text-zinc-200 text-sm font-medium">
+                  {device.model}
+                </p>
+              </div>
+            )}
+            {device.android_version && (
+              <div className="bg-zinc-800/50 rounded-lg p-3">
+                <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">
+                  Android Sürümü
+                </p>
+                <p className="text-zinc-200 text-sm font-medium">
+                  Android {device.android_version}
+                </p>
+              </div>
+            )}
+            {device.battery != null && (
+              <div className="bg-zinc-800/50 rounded-lg p-3">
+                <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">
+                  Batarya
+                </p>
+                <p
+                  className={`text-sm font-bold ${device.battery < 20 ? "text-red-400" : device.battery < 50 ? "text-amber-400" : "text-emerald-400"}`}
+                >
+                  %{device.battery}
+                </p>
+              </div>
+            )}
+            {device.last_seen && (
+              <div className="bg-zinc-800/50 rounded-lg p-3">
+                <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">
+                  Son Bağlantı
+                </p>
+                <p className="text-zinc-400 text-xs">
+                  {new Date(device.last_seen).toLocaleString("tr-TR")}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center py-10">
+          <div className="w-16 h-16 bg-zinc-800/60 rounded-full flex items-center justify-center mb-4">
+            <Smartphone className="w-8 h-8 text-zinc-600" />
+          </div>
+          <p className="text-zinc-400 font-bold">Bağlantı Bekleniyor</p>
+          <p className="text-zinc-600 text-sm mt-2 text-center max-w-xs">
+            Android cihazda ajanı başlatın ve aynı ağa bağlı olduğunuzdan emin
+            olun.
+          </p>
+          {error && (
+            <p className="mt-3 text-[10px] text-zinc-700 font-mono">{error}</p>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ── Part 5: Connection Status Panel ──────────────────────────────────────────
 
 const SOURCE_CONFIG = [
   {
@@ -658,9 +824,10 @@ function StatusStep() {
 // ── Main SetupView ────────────────────────────────────────────────────────────
 
 const STEPS = [
-  { id: "icloud", label: "iCloud", Icon: Cloud },
+  { id: "icloud", label: "iPhone / iCloud", Icon: Cloud },
   { id: "backup", label: "Yerel Backup", Icon: HardDrive },
   { id: "whatsapp", label: "WhatsApp QR", Icon: MessageSquare },
+  { id: "android", label: "Android", Icon: Smartphone },
   { id: "status", label: "Bağlantı Durumu", Icon: Activity },
 ];
 
@@ -672,7 +839,7 @@ export default function SetupView() {
       {/* Header */}
       <div className="h-14 bg-zinc-900/80 border-b border-zinc-800 flex items-center px-6 shrink-0">
         <h2 className="text-white font-bold text-lg tracking-tight">
-          iPhone Bağlantı Kurulumu
+          Telefon Bağlantı Kurulumu
         </h2>
         <span className="ml-3 text-[10px] bg-[#00a2ff]/10 text-[#00a2ff] border border-[#00a2ff]/20 px-2 py-0.5 rounded font-bold uppercase tracking-wider">
           Onboarding
@@ -716,7 +883,8 @@ export default function SetupView() {
           {activeStep === 0 && <ICloudStep />}
           {activeStep === 1 && <BackupStep />}
           {activeStep === 2 && <WhatsAppQRStep />}
-          {activeStep === 3 && <StatusStep />}
+          {activeStep === 3 && <AndroidStep />}
+          {activeStep === 4 && <StatusStep />}
 
           {/* Next step hint */}
           {activeStep < STEPS.length - 1 && (

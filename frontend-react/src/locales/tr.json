@@ -1,0 +1,68 @@
+{
+  "appName": "Sessiz Muhafız",
+  "version": "V2.4.6",
+  "agent": "AJAN",
+  "activeAgent": "Sessiz Ajan Aktif",
+  "premium": "Premium",
+
+  "login": {
+    "title": "Güvenlik Girişi",
+    "subtitle": "Dashboard Erişimi",
+    "recoveryTitle": "Kurtarma Modu",
+    "recoverySubtitle": "Master Key Gerekli",
+    "placeholder": "Geçiş Şifresi",
+    "recoveryPlaceholder": "FS-MONITOR-XXX-...",
+    "submit": "Giriş Yap",
+    "recover": "Sistemi Kurtar",
+    "forgotPassword": "Şifremi Unuttum?",
+    "backToLogin": "Giriş Ekranına Dön",
+    "wrongPassword": "Hatalı şifre!",
+    "invalidKey": "Geçersiz Master Key!",
+    "tooManyAttempts": "Çok fazla deneme. 30 saniye bekleyin.",
+    "secureConnection": "Secure Connection",
+    "recoveryProtocol": "Recovery Protocol"
+  },
+
+  "sections": {
+    "live": "Canlı İzleme",
+    "general": "İstihbarat & Veri",
+    "locations": "Konumlar",
+    "social": "Sosyal Ağlar",
+    "internet": "İnternet Kullanımı",
+    "security": "Güvenlik",
+    "restricted": "Kısıtlamalar"
+  },
+
+  "nav": {
+    "Dashboard": "Dashboard",
+    "Canlı Kontrol": "Canlı Kontrol",
+    "Canlı Ekran": "Canlı Ekran",
+    "Zaman Çizelgesi": "Zaman Çizelgesi",
+    "Rehber": "Rehber",
+    "SMS": "SMS",
+    "Aramalar": "Aramalar",
+    "Etkinlikler": "Etkinlikler",
+    "Fotoğraflar": "Fotoğraflar",
+    "Videolar": "Videolar",
+    "Wi-Fi Ağları": "Wi-Fi Ağları",
+    "Kelime Takibi": "Kelime Takibi",
+    "Klavye Takibi": "Klavye Takibi",
+    "Günlük Notlar": "Günlük Notlar",
+    "Yüklü Uygulamalar": "Yüklü Uygulamalar",
+    "Ekran Süresi": "Ekran Süresi",
+    "GPS Konumları": "GPS Konumları",
+    "Güvenli Bölge": "Güvenli Bölge",
+    "WhatsApp": "WhatsApp",
+    "WhatsApp Kurulum": "WhatsApp Kurulum",
+    "Tarayıcı Geçmişi": "Tarayıcı Geçmişi",
+    "Yer İmleri": "Yer İmleri",
+    "E-Posta": "E-Posta",
+    "Risk Raporu": "Risk Raporu",
+    "Aramaları Engelle": "Aramaları Engelle",
+    "Wi-Fi Engelle": "Wi-Fi Engelle",
+    "Web Sitelerini Engelle": "Web Sitelerini Engelle",
+    "Uygulamaları Engelle": "Uygulamaları Engelle",
+    "Ayarlar": "Ayarlar",
+    "Sistemi Kapat": "Sistemi Kapat"
+  }
+}

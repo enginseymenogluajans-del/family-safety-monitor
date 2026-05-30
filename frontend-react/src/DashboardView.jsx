@@ -7,7 +7,6 @@ import {
   Phone,
   MessageSquare,
   Activity,
-  CircleAlert,
   ShieldAlert,
   Lock,
   Key,
