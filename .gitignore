@@ -10,8 +10,7 @@ frontend-react/dist-electron/
 # Android build artifacts
 android-agent/app/build/
 android-agent/.gradle/
-android-agent/.idea/workspace.xml
-android-agent/.idea/tasks.xml
+android-agent/.idea/
 android-agent/local.properties
 *.apk
 *.aab
