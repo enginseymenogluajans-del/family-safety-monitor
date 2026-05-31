@@ -41,8 +41,10 @@ env/
 backend/.env
 frontend-react/.env
 WebRTC/server/.env
+WebRTC/server/*\.env
 mobile/.env
 .env
+**/*.env
 credentials/
 *.token
 *.key
