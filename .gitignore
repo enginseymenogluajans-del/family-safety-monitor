@@ -7,6 +7,19 @@ frontend-react/dist-electron/
 *.deb
 *.rpm
 
+# Android build artifacts
+android-agent/app/build/
+android-agent/.gradle/
+android-agent/.idea/workspace.xml
+android-agent/.idea/tasks.xml
+android-agent/local.properties
+*.apk
+*.aab
+
+# WhatsApp agent session cache
+whatsapp-agent/.wwebjs_auth/
+whatsapp-agent/.wwebjs_cache/
+
 # Embedded git repos
 .mcp_servers/
 WebRTC/mobile-app/
@@ -27,6 +40,7 @@ env/
 # Environment / secrets
 backend/.env
 frontend-react/.env
+WebRTC/server/.env
 mobile/.env
 .env
 credentials/
@@ -36,3 +50,7 @@ credentials/
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs & data
+backend/data/keystroke_logs/
+*.log

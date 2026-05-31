@@ -30,8 +30,8 @@ import java.io.ByteArrayOutputStream
 object ScreenStreamManager {
 
     private const val TAG = "ScreenStreamManager"
-    private const val MIN_INTERVAL_MS = 500L  // ~2 FPS
-    private const val JPEG_QUALITY = 45
+    private const val MIN_INTERVAL_MS = 200L  // ~5 FPS
+    private const val JPEG_QUALITY = 55
 
     private val httpClient = OkHttpClient()
 
@@ -70,8 +70,9 @@ object ScreenStreamManager {
 
         imageReader = ImageReader.newInstance(widthPx, heightPx, PixelFormat.RGBA_8888, 2)
 
-        // AUTO_MIRROR: birincil ekranı VirtualDisplay'e yansıt — ekran yakalama için doğru flag
-        val flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR
+        // AUTO_MIRROR + PRESENTATION: bazı cihazlarda (Xiaomi, Samsung) siyah ekranı önler
+        val flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR or
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION
 
         virtualDisplay = projection.createVirtualDisplay(
             "screencap", widthPx, heightPx, densityDpi,
@@ -129,33 +130,30 @@ object ScreenStreamManager {
     // ── Kare İşle ─────────────────────────────────────────────────────────────
 
     private fun processFrame(reader: ImageReader, width: Int, height: Int) {
+        val image = reader.acquireLatestImage() ?: return
+        var wideBitmap: Bitmap? = null
+        var bitmap: Bitmap? = null
         try {
-            val image = reader.acquireLatestImage() ?: return
-
             val planes = image.planes
             val buffer = planes[0].buffer
             val pixelStride = planes[0].pixelStride  // RGBA_8888 → 4
             val rowStride = planes[0].rowStride      // >= width * 4 (padding olabilir)
             val rowPadding = rowStride - pixelStride * width
 
-            // MeshCentral pattern: geniş bitmap oluştur, padding dahil
-            val wideBitmap = Bitmap.createBitmap(
-                width + rowPadding / pixelStride, height, Bitmap.Config.ARGB_8888
-            )
+            // Geniş bitmap: rowStride'ın tüm satırı kapsaması için genişlik olarak kullan
+            val bmpWidth = width + rowPadding / pixelStride
+            wideBitmap = Bitmap.createBitmap(bmpWidth, height, Bitmap.Config.ARGB_8888)
             wideBitmap.copyPixelsFromBuffer(buffer)
-            image.close()
 
-            // Sağdaki padding piksellerini kırp → asıl ekran boyutu
-            val bitmap = if (rowPadding > 0) {
+            // Padding varsa sağdan kırp → gerçek ekran boyutu
+            bitmap = if (rowPadding > 0) {
                 Bitmap.createBitmap(wideBitmap, 0, 0, width, height)
-                    .also { wideBitmap.recycle() }
             } else {
-                wideBitmap
+                wideBitmap.also { wideBitmap = null }  // recycle için takip
             }
 
-            val stream = ByteArrayOutputStream()
+            val stream = ByteArrayOutputStream(width * height / 4)
             bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, stream)
-            bitmap.recycle()
 
             val jpegBytes = stream.toByteArray()
             if (jpegBytes.isEmpty()) {
@@ -178,6 +176,11 @@ object ScreenStreamManager {
 
         } catch (e: Exception) {
             Log.e(TAG, "processFrame hatası: ${e.message}")
+        } finally {
+            // image her zaman kapatılmalı — kapatılmazsa sonraki acquireLatestImage bloklanır
+            image.close()
+            wideBitmap?.recycle()
+            bitmap?.recycle()
         }
     }
 

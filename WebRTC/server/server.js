@@ -4,14 +4,19 @@ const { Server } = require("socket.io");
 const cors = require("cors");
 const axios = require("axios");
 
-// ── Supabase config ───────────────────────────────────────────────────────────
-const SUPABASE_URL =
-  process.env.SUPABASE_URL || "https://vgmybtiqrpboieipqdzy.supabase.co";
+// ── Supabase config — çevre değişkeninden oku, hardcode etme ─────────────────
+const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY =
-  process.env.SUPABASE_KEY ||
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZnbXlidGlxcnBib2llaXBxZHp5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3OTE2ODAzMSwiZXhwIjoyMDk0NzQ0MDMxfQ.Cok3VBhBWeu8gutPN1k4nt4SlpheLf0JbB5GKQIX9mE";
+  process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.warn(
+    "⚠️  SUPABASE_URL veya SUPABASE_KEY env değişkeni eksik — Supabase upload devre dışı",
+  );
+}
 
 async function uploadSnapshotToSupabase(profileId, base64Data) {
+  if (!SUPABASE_URL || !SUPABASE_KEY) return null;
   try {
     // base64 → Buffer
     const b64 = base64Data.replace(/^data:image\/\w+;base64,/, "");
@@ -75,7 +80,26 @@ const io = new Server(server, {
 // ── Diagnostics store — en son cihaz durumu (socketId → payload) ──────────
 const _diagnostics = new Map();
 
+// ── Ping/pong heartbeat — 30s'de bir kontrol, 90s cevap gelmezse disconnect ─
+const PING_INTERVAL_MS = 30_000;
+const PING_TIMEOUT_MS = 90_000;
+const _lastPong = new Map(); // socketId → timestamp
+
+setInterval(() => {
+  const now = Date.now();
+  io.sockets.sockets.forEach((sock) => {
+    const last = _lastPong.get(sock.id) ?? now;
+    if (now - last > PING_TIMEOUT_MS) {
+      console.warn(`⏱️  Heartbeat timeout — ${sock.id} bağlantısı kesiliyor`);
+      sock.disconnect(true);
+      return;
+    }
+    sock.emit("ping");
+  });
+}, PING_INTERVAL_MS);
+
 io.on("connection", (socket) => {
+  _lastPong.set(socket.id, Date.now());
   console.log("🔗 Bağlandı:", socket.id);
 
   // Rol kaydı: 'dashboard' veya 'device'
@@ -96,9 +120,15 @@ io.on("connection", (socket) => {
     });
   });
 
+  // Heartbeat pong
+  socket.on("pong", () => {
+    _lastPong.set(socket.id, Date.now());
+  });
+
   socket.on("disconnect", (reason) => {
     console.log("❌ Ayrıldı:", socket.id, "| Sebep:", reason);
     _diagnostics.delete(socket.id);
+    _lastPong.delete(socket.id);
   });
 
   // WebRTC Sinyalleşme — offer/answer/ice peer ID'ye yönlendirilir
