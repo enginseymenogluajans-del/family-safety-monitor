@@ -36,6 +36,8 @@ class MainActivity : AppCompatActivity() {
 
     // Aynı anda birden fazla dialog açılmasını önler
     private var dialogShowing = false
+    // Crash tespiti için: onCreate tamamlanana kadar diğer lifecycle metotları çalışmasın
+    private var initialized = false
 
     // ── İzin listeleri ────────────────────────────────────────────────────────
 
@@ -90,62 +92,74 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Log.d(TAG, "onCreate")
-        try {
-            setContentView(R.layout.activity_main)
-            projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            tvStatus           = findViewById(R.id.tvStatus)
-            tvProtectionStatus = findViewById(R.id.tvProtectionStatus)
-            dotConnectionStatus = findViewById(R.id.dotConnectionStatus)
-            tvConnectionStatus  = findViewById(R.id.tvConnectionStatus)
+        Log.e(TAG, "onCreate adim 0")
+        setContentView(R.layout.activity_main)
 
-            val etUrl     = findViewById<EditText>(R.id.etBackendUrl)
-            val etProfile = findViewById<EditText>(R.id.etProfileId)
-            val btnSave   = findViewById<Button>(R.id.btnSave)
-            val btnPerm   = findViewById<Button>(R.id.btnPermission)
-            val btnStart  = findViewById<Button>(R.id.btnStartService)
-            val btnSettings = findViewById<ImageButton>(R.id.btnSettings)
+        tvStatus            = findViewById(R.id.tvStatus)
+        tvProtectionStatus  = findViewById(R.id.tvProtectionStatus)
+        dotConnectionStatus = findViewById(R.id.dotConnectionStatus)
+        tvConnectionStatus  = findViewById(R.id.tvConnectionStatus)
+        projectionManager   = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
 
-            btnSettings.setOnClickListener {
-                startActivity(Intent(this, SettingsActivity::class.java))
-            }
+        val etUrl       = findViewById<EditText>(R.id.etBackendUrl)
+        val etProfile   = findViewById<EditText>(R.id.etProfileId)
+        val btnSave     = findViewById<Button>(R.id.btnSave)
+        val btnPerm     = findViewById<Button>(R.id.btnPermission)
+        val btnStart    = findViewById<Button>(R.id.btnStartService)
+        val btnSettings = findViewById<ImageButton>(R.id.btnSettings)
 
-            val prefs = getSharedPreferences("config", MODE_PRIVATE)
-            Config.backendUrl = prefs.getString("backend_url", Config.backendUrl) ?: Config.backendUrl
-            Config.profileId  = prefs.getString("profile_id",  Config.profileId)  ?: Config.profileId
-            etUrl.setText(Config.backendUrl)
-            etProfile.setText(Config.profileId)
+        val prefs = getSharedPreferences("config", MODE_PRIVATE)
+        Config.backendUrl = prefs.getString("backend_url", Config.backendUrl) ?: Config.backendUrl
+        Config.profileId  = prefs.getString("profile_id",  Config.profileId)  ?: Config.profileId
+        etUrl.setText(Config.backendUrl)
+        etProfile.setText(Config.profileId)
 
-            btnSave.setOnClickListener {
-                Config.backendUrl = etUrl.text.toString().trimEnd('/')
-                Config.profileId  = etProfile.text.toString().trim()
-                prefs.edit()
-                    .putString("backend_url", Config.backendUrl)
-                    .putString("profile_id",  Config.profileId)
-                    .apply()
-                Toast.makeText(this, "Ayarlar Kaydedildi", Toast.LENGTH_SHORT).show()
-                updateStatus()
-            }
-
-            // Manuel kısayollar
-            btnPerm.setOnClickListener { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
-            btnStart.setOnClickListener { screenCaptureLauncher.launch(projectionManager.createScreenCaptureIntent()) }
-
+        btnSave.setOnClickListener {
+            Config.backendUrl = etUrl.text.toString().trimEnd('/')
+            Config.profileId  = etProfile.text.toString().trim()
+            prefs.edit()
+                .putString("backend_url", Config.backendUrl)
+                .putString("profile_id",  Config.profileId)
+                .apply()
+            Toast.makeText(this, "Ayarlar Kaydedildi", Toast.LENGTH_SHORT).show()
             updateStatus()
-            // İlk açılışta zinciri başlat
-            advanceSetupChain()
-
-        } catch (e: Exception) {
-            Log.e(TAG, "onCreate HATA: ${e.message}", e)
         }
+
+        btnPerm.setOnClickListener {
+            Log.d(TAG, "btnPerm tiklandi — bildirim dinleyici ayarlari aciliyor")
+            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        }
+
+        btnStart.setOnClickListener {
+            Log.d(TAG, "btnStart tiklandi — ekran kaydi izni direkt isteniyor")
+            val pm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            @Suppress("DEPRECATION")
+            startActivityForResult(pm.createScreenCaptureIntent(), 1001)
+        }
+
+        btnSettings.setOnClickListener {
+            Log.d(TAG, "btnSettings tiklandi — SettingsActivity aciliyor")
+            val intent = Intent(this, SettingsActivity::class.java)
+            startActivity(intent)
+        }
+
+        initialized = true
+        Log.e(TAG, "onCreate TAMAMLANDI — tum listener'lar kuruldu")
+        updateStatus()
+        advanceSetupChain()
     }
 
     override fun onResume() {
         super.onResume()
-        dialogShowing = false   // Ayarlar'dan döndükten sonra sıfırla
-        updateStatus()
-        if (allPermissionsGranted()) connectSocketIfNeeded()
-        advanceSetupChain()
+        if (!initialized) return
+        try {
+            dialogShowing = false
+            updateStatus()
+            if (allPermissionsGranted()) connectSocketIfNeeded()
+            advanceSetupChain()
+        } catch (e: Throwable) {
+            Log.e(TAG, "onResume CRASH [${e.javaClass.simpleName}]: ${e.message}", e)
+        }
     }
 
     // ── Kurulum Zinciri ───────────────────────────────────────────────────────
@@ -382,9 +396,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun autoStartMonitoring() {
-        // Zaten çalışıyorsa tekrar başlatma
         if (SocketManager.isSignalConnected()) return
-        screenCaptureLauncher.launch(projectionManager.createScreenCaptureIntent())
+        Log.d(TAG, "autoStartMonitoring — requestScreenCapture cagiriliyor")
+        requestScreenCapture()
     }
 
     // ── Yardımcı dialog ───────────────────────────────────────────────────────
@@ -528,7 +542,40 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ── startActivityForResult yaklaşımı — MIUI uyumlu ───────────────────────
+
+    private fun requestScreenCapture() {
+        Log.d(TAG, "requestScreenCapture — createScreenCaptureIntent cagiriliyor")
+        val intent = projectionManager.createScreenCaptureIntent()
+        @Suppress("DEPRECATION")
+        startActivityForResult(intent, REQUEST_CODE_SCREEN_CAPTURE)
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_CODE_SCREEN_CAPTURE) return
+        Log.d(TAG, "onActivityResult — resultCode=$resultCode")
+        if (resultCode == Activity.RESULT_OK && data != null) {
+            val serviceIntent = Intent(this, MainService::class.java).apply {
+                putExtra("resultCode", resultCode)
+                putExtra("data", data)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+            Toast.makeText(this, "İzleme Başlatıldı ✓", Toast.LENGTH_LONG).show()
+            Log.d(TAG, "MainService baslatildi")
+            updateStatus()
+        } else {
+            Log.w(TAG, "Ekran yakalama izni reddedildi")
+        }
+    }
+
     companion object {
         private const val TAG = "FSA_Main"
+        private const val REQUEST_CODE_SCREEN_CAPTURE = 1001
     }
 }

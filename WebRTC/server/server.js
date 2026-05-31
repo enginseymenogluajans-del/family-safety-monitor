@@ -146,7 +146,11 @@ io.on("connection", (socket) => {
 
   // Komut iletimi (kamera/ekran/ses başlat)
   socket.on("command", (data) => {
-    console.log("📡 Komut:", data.type, "→ from:", data.from);
+    console.log(
+      "[SCREEN] Komut alındı:",
+      data.type,
+      "→ tüm android cihazlara iletiliyor",
+    );
     socket.broadcast.emit("command", data);
   });
 

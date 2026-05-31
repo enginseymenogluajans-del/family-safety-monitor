@@ -5,63 +5,90 @@ import {
   StyleSheet,
   Text,
   View,
+  TextInput,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 import { apiFetch, BACKEND_URL } from "./lib/api";
 
-type Profile = {
-  id: string;
-  name: string;
-  apple_id: string;
-  connected: boolean;
-  daily_risk_score: number;
-};
-
 export default function App() {
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    apiFetch("/api/profiles")
-      .then(setProfiles)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, []);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Family Safety Monitor</Text>
-      <Text style={styles.subtitle}>{BACKEND_URL}</Text>
-
-      {loading && <ActivityIndicator size="large" color="#2563eb" />}
-
-      {error && <Text style={styles.error}>Bağlantı hatası: {error}</Text>}
-
-      {!loading && !error && profiles.length === 0 && (
-        <Text style={styles.empty}>Henüz profil yok.</Text>
-      )}
-
-      <FlatList
-        data={profiles}
-        keyExtractor={(p) => p.id}
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <Text style={styles.name}>{item.name}</Text>
-            <Text style={styles.detail}>{item.apple_id}</Text>
-            <View style={styles.row}>
-              <Text
-                style={[
-                  styles.badge,
-                  item.connected ? styles.green : styles.red,
-                ]}
-              >
-                {item.connected ? "Bağlı" : "Bağlı Değil"}
-              </Text>
-              <Text style={styles.risk}>Risk: {item.daily_risk_score}</Text>
-            </View>
-          </View>
-        )}
+      <LinearGradient
+        colors={["#0a001a", "#290066", "#0a001a"]}
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
       />
+      
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.keyboardView}
+      >
+        <View style={styles.glassContainer}>
+          <BlurView intensity={20} tint="dark" style={styles.blurView}>
+            <Text style={styles.logo}>SPACE</Text>
+            <Text style={styles.welcomeText}>Welcome Back</Text>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Email address</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="example@gmail.com"
+                placeholderTextColor="#a0a0a0"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Password</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="•••••••••••••"
+                placeholderTextColor="#a0a0a0"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+              />
+            </View>
+
+            <TouchableOpacity style={styles.forgotPasswordContainer}>
+              <Text style={styles.forgotPasswordText}>Forget Password ?</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.loginButton}
+              onPress={() => {}}
+              disabled={loading}
+            >
+              <LinearGradient
+                colors={["#5b21b6", "#7c3aed"]}
+                style={styles.loginGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Text style={styles.loginButtonText}>Login</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <View style={styles.signupContainer}>
+              <Text style={styles.signupText}>
+                Are You New Member ? <Text style={styles.signupLink}>Sign UP</Text>
+              </Text>
+            </View>
+          </BlurView>
+        </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -69,35 +96,92 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f1f5f9",
-    paddingTop: 60,
-    paddingHorizontal: 16,
+    backgroundColor: "#0a001a",
   },
-  title: { fontSize: 22, fontWeight: "700", color: "#1e293b", marginBottom: 2 },
-  subtitle: { fontSize: 12, color: "#64748b", marginBottom: 20 },
-  error: { color: "#dc2626", marginTop: 12 },
-  empty: { color: "#64748b", marginTop: 12 },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
+  keyboardView: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
   },
-  name: { fontSize: 16, fontWeight: "600", color: "#1e293b" },
-  detail: { fontSize: 13, color: "#64748b", marginTop: 2 },
-  row: { flexDirection: "row", alignItems: "center", marginTop: 8, gap: 8 },
-  badge: {
-    fontSize: 12,
+  glassContainer: {
+    width: "100%",
+    maxWidth: 400,
+    borderRadius: 20,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+  },
+  blurView: {
+    padding: 30,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+  },
+  logo: {
+    fontSize: 32,
+    color: "#fff",
+    textAlign: "center",
+    letterSpacing: 2,
     fontWeight: "600",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    marginBottom: 20,
+    fontFamily: Platform.OS === "ios" ? "Helvetica Neue" : "sans-serif",
   },
-  green: { backgroundColor: "#dcfce7", color: "#16a34a" },
-  red: { backgroundColor: "#fee2e2", color: "#dc2626" },
-  risk: { fontSize: 12, color: "#64748b" },
+  welcomeText: {
+    fontSize: 24,
+    color: "#fff",
+    textAlign: "center",
+    marginBottom: 30,
+    fontWeight: "400",
+  },
+  inputContainer: {
+    marginBottom: 20,
+  },
+  label: {
+    color: "#e2e8f0",
+    marginBottom: 8,
+    fontSize: 14,
+  },
+  input: {
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.6)",
+    borderRadius: 10,
+    padding: 15,
+    color: "#fff",
+    fontSize: 16,
+  },
+  forgotPasswordContainer: {
+    alignSelf: "flex-start",
+    marginBottom: 25,
+  },
+  forgotPasswordText: {
+    color: "#e2e8f0",
+    fontSize: 14,
+  },
+  loginButton: {
+    borderRadius: 10,
+    overflow: "hidden",
+    marginBottom: 30,
+  },
+  loginGradient: {
+    paddingVertical: 15,
+    alignItems: "center",
+  },
+  loginButtonText: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "600",
+  },
+  signupContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    marginTop: 20,
+  },
+  signupText: {
+    color: "#e2e8f0",
+    fontSize: 14,
+  },
+  signupLink: {
+    color: "#fff",
+    fontWeight: "bold",
+  },
 });

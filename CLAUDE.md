@@ -34,6 +34,22 @@
   - Uzaktan erişim teknikleri, WebRTC/socket.io çözümleri, canlı izleme implementasyonları
   - NOT: Claude bu URL'e doğrudan erişemez — içerikleri bu dosyaya veya konuşmaya yapıştırarak kullan
 
+## Git Hygiene
+
+- Never commit build artifacts (.gradle, .dex, .class, /build, /dist, node_modules). Verify .gitignore covers these before any commit.
+
+## State Tracking
+
+- Use MEMORY.md to track which files/phases are completed. Do NOT re-read or re-scan files already confirmed done. Work in minimal, targeted diffs.
+
+## Verify Before Claiming Done
+
+- For builds/deploys, confirm artifacts are actually rebuilt and installed (check timestamps/version) rather than assuming success.
+
+## Environment Notes
+
+- This is a Windows environment. Avoid Unix-only shell idioms like `mkdir -p` in scripts; use cross-platform equivalents. Note that interactive commands (codex login, expo/vite dev servers) must be handed off to the user.
+
 ## Build & Deploy Verification
 
 - After any Android build, verify the APK timestamp and installed version on device before declaring success (use `adb shell dumpsys package <pkg> | grep versionName` and check file mtime).

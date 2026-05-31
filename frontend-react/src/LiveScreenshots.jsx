@@ -146,6 +146,7 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
     if (!supabaseUrl || supabaseUrl === "https://your-project-id.supabase.co")
       return;
 
+    // Realtime broadcast: Android'den "frame" olayı gelince URL'i güncelle
     const channel = supabase
       .channel(`screen-${profileId}`)
       .on("broadcast", { event: "frame" }, (msg) => {
@@ -157,8 +158,15 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
       })
       .subscribe();
 
+    // 1s polling fallback — Realtime gelişmezse Storage URL'ini doğrudan yenile
+    const pollId = setInterval(() => {
+      const url = `${supabaseUrl}/storage/v1/object/public/screenshots/${profileId}/live.jpg?t=${Date.now()}`;
+      setLiveFrame(url);
+    }, 1000);
+
     return () => {
       supabase.removeChannel(channel);
+      clearInterval(pollId);
     };
   }, [streaming, profileId]);
 

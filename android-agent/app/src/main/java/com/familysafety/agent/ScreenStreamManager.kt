@@ -43,6 +43,7 @@ object ScreenStreamManager {
 
     @Volatile private var streaming = false
     @Volatile private var lastEmitTime = 0L
+    @Volatile private var warmupFrames = 0  // ilk 3 frame atlanır (VirtualDisplay init)
 
     fun setMediaProjection(projection: MediaProjection) {
         mediaProjection = projection
@@ -53,6 +54,7 @@ object ScreenStreamManager {
     // ── Akış Başlat ───────────────────────────────────────────────────────────
 
     fun startStreaming(widthPx: Int, heightPx: Int, densityDpi: Int) {
+        Log.d(TAG, "startStreaming çağrıldı — mediaProjection=$mediaProjection")
         val projection = mediaProjection ?: run {
             Log.e(TAG, "MediaProjection null — akış başlatılamıyor")
             return
@@ -63,21 +65,20 @@ object ScreenStreamManager {
         }
         streaming = true
         lastEmitTime = 0L
+        warmupFrames = 0
 
-        // MeshCentral: arka plan thread'de kendi Looper'ı olan Handler
         handlerThread = HandlerThread("ScreenStream").also { it.start() }
         handler = Handler(handlerThread!!.looper)
 
         imageReader = ImageReader.newInstance(widthPx, heightPx, PixelFormat.RGBA_8888, 2)
 
-        // AUTO_MIRROR + PRESENTATION: bazı cihazlarda (Xiaomi, Samsung) siyah ekranı önler
-        val flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR or
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_PRESENTATION
+        val flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR
+        Log.d(TAG, "VirtualDisplay oluşturuluyor: ${widthPx}x${heightPx} dpi=$densityDpi flags=$flags")
 
         virtualDisplay = projection.createVirtualDisplay(
             "screencap", widthPx, heightPx, densityDpi,
             flags,
-            imageReader!!.surface, null, null
+            imageReader!!.surface, null, handler
         )
 
         // MediaProjection durduğunda temizlik + projection referansını sıfırla
@@ -93,6 +94,12 @@ object ScreenStreamManager {
         // Event-driven — sistem kare hazır olduğunda çağırır (polling değil)
         imageReader!!.setOnImageAvailableListener({ reader ->
             if (!streaming) return@setOnImageAvailableListener
+            // VirtualDisplay ilk birkaç frame'i siyah üretebilir — atla
+            if (warmupFrames < 3) {
+                warmupFrames++
+                reader.acquireLatestImage()?.close()
+                return@setOnImageAvailableListener
+            }
             val now = System.currentTimeMillis()
             if (now - lastEmitTime < MIN_INTERVAL_MS) {
                 // Throttle: bu kareyi at, ama image'ı mutlaka kapat
@@ -139,6 +146,7 @@ object ScreenStreamManager {
             val pixelStride = planes[0].pixelStride  // RGBA_8888 → 4
             val rowStride = planes[0].rowStride      // >= width * 4 (padding olabilir)
             val rowPadding = rowStride - pixelStride * width
+            Log.d(TAG, "Frame alındı: ${image.width}x${image.height} rowStride=$rowStride pixelStride=$pixelStride rowPadding=$rowPadding")
 
             // Geniş bitmap: rowStride'ın tüm satırı kapsaması için genişlik olarak kullan
             val bmpWidth = width + rowPadding / pixelStride
@@ -187,6 +195,7 @@ object ScreenStreamManager {
     // ── Supabase Storage — direkt upload (üzerine yaz) ───────────────────────
 
     private fun uploadToSupabase(jpegBytes: ByteArray) {
+        Log.d(TAG, "Supabase upload başlıyor: ${jpegBytes.size} bytes → ${Config.profileId}/live.jpg")
         try {
             val path = "${Config.profileId}/live.jpg"
             val body = jpegBytes.toRequestBody("image/jpeg".toMediaTypeOrNull())
@@ -202,8 +211,14 @@ object ScreenStreamManager {
                     Log.w(TAG, "Supabase upload hatası: ${e.message}")
                 }
                 override fun onResponse(call: okhttp3.Call, response: Response) {
-                    response.close()
-                    if (response.isSuccessful) broadcastToRealtime()
+                    if (response.isSuccessful) {
+                        response.close()
+                        broadcastToRealtime()
+                    } else {
+                        val body = response.body?.string() ?: "(boş)"
+                        Log.e(TAG, "Supabase upload başarısız: HTTP ${response.code} — $body")
+                        response.close()
+                    }
                 }
             })
         } catch (e: Exception) {

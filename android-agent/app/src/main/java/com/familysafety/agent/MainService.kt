@@ -60,12 +60,18 @@ class MainService : Service() {
         else
             @Suppress("DEPRECATION") intent?.getParcelableExtra("data")
 
-        if (resultCode != -1 && projData != null) {
+        Log.d("MainService", "resultCode=${resultCode}, data=${projData}")
+
+        if (projData != null) {
+            Log.d("MainService", "mediaProjection set ediliyor...")
             val pm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             val projection = pm.getMediaProjection(resultCode, projData)
             ScreenshotHelper.setMediaProjection(projection)
             ScreenStreamManager.setMediaProjection(projection)
-            Log.d("MainService", "MediaProjection alındı ve ayarlandı")
+            Log.d("MainService", "mediaProjection set edildi: $projection")
+            Log.d("MainService", "ScreenStreamManager projection set: ${ScreenStreamManager.isProjectionReady()}")
+        } else {
+            Log.w("MainService", "projData null — MediaProjection set edilmedi (normal boot başlatması)")
         }
 
         return START_STICKY
