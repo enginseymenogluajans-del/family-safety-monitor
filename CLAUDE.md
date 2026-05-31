@@ -15,6 +15,18 @@
   - GPS + Network provider, son bilinen konum hemen gönderilir
   - Timestamp ISO 8601 formatına düzeltildi
   - MainService.onStartCommand() → startTracking(), onDestroy() → stop()
+- [x] ~~CORS fix~~ — backend/main.py: `allow_origins` listesine port 5174, 3000 ve `"*"` eklendi
+- [x] ~~useEffect import hatası düzeltildi~~ — eksik import'lar ve kullanılmayan icon import'ları temizlendi (Views.jsx, DashboardView.jsx, SetupView.jsx)
+- [x] ~~Erişilebilirlik watchdog~~ — MainService.kt: 30s Handler loop, kapalıysa yüksek öncelikli bildirim + Erişilebilirlik Ayarları yönlendirmesi
+- [x] ~~MIUI kilitleme ekranı adımı~~ — MainActivity.kt: `advanceSetupChain()` ADIM 5b, kilitleme ekranı uygulama kapatma rehberi + Güvenlik uygulaması yönlendirmesi
+- [x] ~~REQUEST_INSTALL_PACKAGES izni~~ — AndroidManifest.xml'de mevcut; `canRequestPackageInstalls()` kontrolü MainActivity status ekranına eklendi
+- [x] ~~Device Admin şifre koruması~~ — DeviceAdminReceiver + PasswordCheckActivity eklendi, kaldırmaya karşı koruma
+- [x] ~~i18n dil seçici (TR/EN)~~ — react-i18next entegrasyonu, App.jsx toggle butonu, locales/tr.json + locales/en.json
+- [x] ~~Özellik ON/OFF toggle switch'leri~~ — App.jsx sidebar'da her özellik için aktif/pasif toggle
+- [x] ~~WhatsApp kişi isimleri~~ — whatsapp-agent mesajlarında chat_name alanı frontend'e iletiliyor
+- [x] ~~Rehber isimleri düzeltmesi~~ — ContactsReader.kt eklendi; SMS/arama görünümlerinde contact_name öncelikli gösteriliyor
+- [x] ~~Android arayüzü yeniden tasarımı~~ — activity_main.xml ve bağlı layout'lar modernize edildi
+- [x] ~~SettingsActivity eklendi~~ — SettingsActivity.kt + activity_settings.xml; backend URL, profil ID ve uygulama şifresi ayarları
 
 ## Referans Kaynaklar
 
