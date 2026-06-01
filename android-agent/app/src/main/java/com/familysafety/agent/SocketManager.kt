@@ -138,8 +138,6 @@ object SocketManager {
                 reconnectionDelay = 2000
                 reconnectionDelayMax = 15000
                 timeout = 120000
-                pingInterval = 30000
-                pingTimeout = 120000
             }
 
             signalSocket = IO.socket(url, options)
