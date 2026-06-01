@@ -24,6 +24,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.util.concurrent.Executors
+import java.util.concurrent.ExecutorService
 
 /**
  * Canlı ekran akışı — scrcpy SurfaceEncoder yaklaşımı
@@ -42,7 +44,7 @@ object ScreenStreamManager {
 
     private const val TAG = "ScreenStreamManager"
     private const val SNAP_DIVIDER = 4       // Supabase snapshot çözünürlüğü 1/4
-    private const val SUPABASE_EVERY_N = 5   // Her N H.264 karede bir JPEG snapshot
+    private const val SUPABASE_EVERY_N = 30  // Her N H.264 karede bir JPEG snapshot (~2s)
 
     private val httpClient = OkHttpClient()
 
@@ -53,6 +55,7 @@ object ScreenStreamManager {
     private var snapshotVd: VirtualDisplay? = null
     private var handlerThread: HandlerThread? = null
     private var handler: Handler? = null
+    private var snapshotExecutor: ExecutorService? = null
 
     @Volatile private var streaming = false
     @Volatile private var frameCount = 0
@@ -76,13 +79,14 @@ object ScreenStreamManager {
 
         handlerThread = HandlerThread("ScreenStream").also { it.start() }
         handler = Handler(handlerThread!!.looper)
+        snapshotExecutor = Executors.newSingleThreadExecutor()
 
         // ── MediaCodec H.264 encoder (scrcpy SurfaceEncoder yaklaşımı) ────────
         val format = MediaFormat.createVideoFormat(
             MediaFormat.MIMETYPE_VIDEO_AVC, widthPx, heightPx
         ).apply {
             setInteger(MediaFormat.KEY_BIT_RATE, 2_000_000)
-            setInteger(MediaFormat.KEY_FRAME_RATE, 15)
+            setInteger(MediaFormat.KEY_FRAME_RATE, 20)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
             setInteger(
                 MediaFormat.KEY_COLOR_FORMAT,
@@ -125,7 +129,8 @@ object ScreenStreamManager {
 
                         val n = ++frameCount
                         if (n % SUPABASE_EVERY_N == 0) {
-                            captureSnapshotForSupabase()
+                            // Encoder thread'ini bloke etmemek için ayrı thread'de çalıştır
+                            snapshotExecutor?.execute { captureSnapshotForSupabase() }
                         }
                     }
                 } catch (e: Exception) {
@@ -187,6 +192,7 @@ object ScreenStreamManager {
             encoder?.stop()
             encoder?.release()
             handlerThread?.quitSafely()
+            snapshotExecutor?.shutdown()
             mediaProjection?.stop()
         } catch (e: Exception) {
             Log.e(TAG, "Durdurma hatası: ${e.message}")
@@ -197,6 +203,7 @@ object ScreenStreamManager {
         encoder = null
         handlerThread = null
         handler = null
+        snapshotExecutor = null
         mediaProjection = null
         Log.d(TAG, "Ekran akışı durduruldu")
     }
