@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#4A0080</color>
+    <color name="colorAccent">#7B00FF</color>
+    <color name="colorBackground">#0A0A0F</color>
+    <color name="colorCard">#12101A</color>
+    <color name="colorButton">#5500CC</color>
+    <color name="colorButtonGradient">#7B00FF</color>
+    <color name="colorText">#FFFFFF</color>
+    <color name="colorTextSecondary">#A0A0C0</color>
+    <color name="colorInputBorder">#6600CC</color>
+    <color name="colorStatusActive">#4CAF50</color>
+    <color name="colorStatusInactive">#F44336</color>
+    <color name="colorDivider">#2A1A4A</color>
+</resources>

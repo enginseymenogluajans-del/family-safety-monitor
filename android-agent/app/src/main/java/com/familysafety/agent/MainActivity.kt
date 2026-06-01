@@ -114,6 +114,8 @@ class MainActivity : AppCompatActivity() {
         etUrl.setText(Config.backendUrl)
         etProfile.setText(Config.profileId)
 
+        UpdateManager(this).checkForUpdates()
+
         btnSave.setOnClickListener {
             Config.backendUrl = etUrl.text.toString().trimEnd('/')
             Config.profileId  = etProfile.text.toString().trim()
