@@ -382,3 +382,11 @@ Mesajlar: http://localhost:3001/api/messages | Sağlık: http://localhost:3001/h
 | Riskli site ziyareti    | +35  |
 | Güvenli bölge çıkışı    | +25  |
 | Gece kullanımı          | +15  |
+
+## Build Verification
+
+After Android code changes, always run a clean build (`./gradlew clean assembleDebug`) and verify the APK timestamp before claiming completion. Confirm the installed version on device matches the new build (check version code / build date) rather than trusting that an install succeeded.
+
+## Dependency Versions
+
+Before importing a symbol or using an API, verify it exists in the installed package version (check package.json / pip freeze). Pin known-working versions (e.g., whatsapp-web.js 1.26.0).
