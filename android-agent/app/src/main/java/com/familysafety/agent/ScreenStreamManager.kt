@@ -5,7 +5,11 @@ import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
+import android.media.MediaCodec
+import android.media.MediaCodecInfo
+import android.media.MediaFormat
 import android.media.projection.MediaProjection
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Base64
@@ -16,34 +20,42 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 
 /**
- * Canlı ekran akışı yöneticisi — MeshCentral ScreenCaptureService.kt referans alınarak yazıldı.
+ * Canlı ekran akışı — scrcpy SurfaceEncoder yaklaşımı
  *
- * Önemli değişiklikler:
- * - VirtualDisplay flags: OWN_CONTENT_ONLY | PUBLIC  (AUTO_MIRROR yerine)
- * - Frame döngüsü: setOnImageAvailableListener  (polling yerine)
- * - Rate limiting: lastEmitTime ile 500ms throttle
+ * Siyah ekran sorunu nedeni: ImageReader(RGBA_8888) CPU buffer yolu,
+ * bazı cihazlarda VirtualDisplay render başlamadan önce siyah frame döner.
+ *
+ * Çözüm: MediaCodec.createInputSurface() → GPU Surface → VirtualDisplay
+ * GPU doğrudan encoder surface'ına render eder, CPU copy yok, siyah ekran yok.
+ *
+ * Çift VirtualDisplay mimarisi:
+ *   1. primaryVd  → encoder surface (tam çözünürlük, H.264)  → Socket.io
+ *   2. snapshotVd → ImageReader    (1/4 çözünürlük, JPEG)    → Supabase
  */
 object ScreenStreamManager {
 
     private const val TAG = "ScreenStreamManager"
-    private const val MIN_INTERVAL_MS = 200L  // ~5 FPS
-    private const val JPEG_QUALITY = 55
+    private const val SNAP_DIVIDER = 4       // Supabase snapshot çözünürlüğü 1/4
+    private const val SUPABASE_EVERY_N = 5   // Her N H.264 karede bir JPEG snapshot
 
     private val httpClient = OkHttpClient()
 
     private var mediaProjection: MediaProjection? = null
-    private var virtualDisplay: VirtualDisplay? = null
-    private var imageReader: ImageReader? = null
+    private var encoder: MediaCodec? = null
+    private var primaryVd: VirtualDisplay? = null
+    private var snapshotReader: ImageReader? = null
+    private var snapshotVd: VirtualDisplay? = null
     private var handlerThread: HandlerThread? = null
     private var handler: Handler? = null
 
     @Volatile private var streaming = false
-    @Volatile private var lastEmitTime = 0L
-    @Volatile private var warmupFrames = 0  // ilk 3 frame atlanır (VirtualDisplay init)
+    @Volatile private var frameCount = 0
 
     fun setMediaProjection(projection: MediaProjection) {
         mediaProjection = projection
@@ -51,37 +63,107 @@ object ScreenStreamManager {
 
     fun isProjectionReady(): Boolean = mediaProjection != null
 
-    // ── Akış Başlat ───────────────────────────────────────────────────────────
+    // ── Akış Başlat ──────────────────────────────────────────────────────────
 
     fun startStreaming(widthPx: Int, heightPx: Int, densityDpi: Int) {
-        Log.d(TAG, "startStreaming çağrıldı — mediaProjection=$mediaProjection")
         val projection = mediaProjection ?: run {
             Log.e(TAG, "MediaProjection null — akış başlatılamıyor")
             return
         }
-        if (streaming) {
-            Log.w(TAG, "Akış zaten aktif — durdurup yeniden başlatılıyor")
-            stop()
-        }
+        if (streaming) stop()
         streaming = true
-        lastEmitTime = 0L
-        warmupFrames = 0
+        frameCount = 0
 
         handlerThread = HandlerThread("ScreenStream").also { it.start() }
         handler = Handler(handlerThread!!.looper)
 
-        imageReader = ImageReader.newInstance(widthPx, heightPx, PixelFormat.RGBA_8888, 2)
+        // ── MediaCodec H.264 encoder (scrcpy SurfaceEncoder yaklaşımı) ────────
+        val format = MediaFormat.createVideoFormat(
+            MediaFormat.MIMETYPE_VIDEO_AVC, widthPx, heightPx
+        ).apply {
+            setInteger(MediaFormat.KEY_BIT_RATE, 2_000_000)
+            setInteger(MediaFormat.KEY_FRAME_RATE, 15)
+            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+            setInteger(
+                MediaFormat.KEY_COLOR_FORMAT,
+                MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface
+            )
+            // scrcpy: ilk kareyi 100ms içinde gönder, kötü kalite sonrası recover
+            setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 100_000L)
+            // scrcpy: gerçek zamanlı öncelik (API 23+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                setInteger(MediaFormat.KEY_PRIORITY, 0)
+            }
+            // scrcpy: 1 kare tampon — minimum gecikme (API 26+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                setInteger(MediaFormat.KEY_LATENCY, 1)
+            }
+        }
 
-        val flags = DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR
-        Log.d(TAG, "VirtualDisplay oluşturuluyor: ${widthPx}x${heightPx} dpi=$densityDpi flags=$flags")
+        val enc = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
+        enc.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        val encoderSurface = enc.createInputSurface()
 
-        virtualDisplay = projection.createVirtualDisplay(
-            "screencap", widthPx, heightPx, densityDpi,
-            flags,
-            imageReader!!.surface, null, handler
+        // Async callback — H.264 buffer'larını alır ve iletir
+        enc.setCallback(object : MediaCodec.Callback() {
+            // Surface mode: encoder giriş GPU tarafından yönetilir
+            override fun onInputBufferAvailable(codec: MediaCodec, index: Int) {}
+
+            override fun onOutputBufferAvailable(
+                codec: MediaCodec, index: Int, info: MediaCodec.BufferInfo
+            ) {
+                if (!streaming) {
+                    codec.releaseOutputBuffer(index, false)
+                    return
+                }
+                try {
+                    val buf = codec.getOutputBuffer(index) ?: return
+                    if (info.size > 0) {
+                        val bytes = ByteArray(info.size)
+                        buf.get(bytes)
+                        sendH264Frame(bytes, info)
+
+                        val n = ++frameCount
+                        if (n % SUPABASE_EVERY_N == 0) {
+                            captureSnapshotForSupabase()
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "onOutputBufferAvailable hata: ${e.message}")
+                } finally {
+                    codec.releaseOutputBuffer(index, false)
+                }
+            }
+
+            override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) {
+                Log.d(TAG, "Encoder format: $format")
+            }
+
+            override fun onError(codec: MediaCodec, e: MediaCodec.CodecException) {
+                Log.e(TAG, "MediaCodec hatası: ${e.diagnosticInfo}")
+            }
+        }, handler)
+
+        enc.start()
+        encoder = enc
+
+        // ── VirtualDisplay 1: encoder surface (tam çözünürlük, GPU yolu) ──────
+        primaryVd = projection.createVirtualDisplay(
+            "ScreenCapture", widthPx, heightPx, densityDpi,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+            encoderSurface, null, handler
         )
 
-        // MediaProjection durduğunda temizlik + projection referansını sıfırla
+        // ── VirtualDisplay 2: snapshot (1/4 çözünürlük, JPEG Supabase) ────────
+        val snapW = ((widthPx / SNAP_DIVIDER) and 1.inv())   // çift sayıya yuvarlama
+        val snapH = ((heightPx / SNAP_DIVIDER) and 1.inv())
+        snapshotReader = ImageReader.newInstance(snapW, snapH, PixelFormat.RGBA_8888, 2)
+        snapshotVd = projection.createVirtualDisplay(
+            "ScreenSnapshot", snapW, snapH, densityDpi,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+            snapshotReader!!.surface, null, handler
+        )
+
         projection.registerCallback(object : MediaProjection.Callback() {
             override fun onStop() {
                 handler?.post {
@@ -91,134 +173,108 @@ object ScreenStreamManager {
             }
         }, handler)
 
-        // Event-driven — sistem kare hazır olduğunda çağırır (polling değil)
-        imageReader!!.setOnImageAvailableListener({ reader ->
-            if (!streaming) return@setOnImageAvailableListener
-            // VirtualDisplay ilk birkaç frame'i siyah üretebilir — atla
-            if (warmupFrames < 3) {
-                warmupFrames++
-                reader.acquireLatestImage()?.close()
-                return@setOnImageAvailableListener
-            }
-            val now = System.currentTimeMillis()
-            if (now - lastEmitTime < MIN_INTERVAL_MS) {
-                // Throttle: bu kareyi at, ama image'ı mutlaka kapat
-                reader.acquireLatestImage()?.close()
-                return@setOnImageAvailableListener
-            }
-            lastEmitTime = now
-            processFrame(reader, widthPx, heightPx)
-        }, handler)
-
-        Log.d(TAG, "Ekran akışı başladı (${widthPx}x${heightPx}), flags=$flags")
+        Log.d(TAG, "MediaCodec akışı başladı: ${widthPx}x${heightPx} snapshot:${snapW}x${snapH}")
     }
 
-    // ── Akış Durdur ───────────────────────────────────────────────────────────
+    // ── Akış Durdur ──────────────────────────────────────────────────────────
 
     fun stop() {
         streaming = false
         try {
-            imageReader?.setOnImageAvailableListener(null, null)
-            virtualDisplay?.release()
-            imageReader?.close()
+            primaryVd?.release()
+            snapshotVd?.release()
+            snapshotReader?.close()
+            encoder?.stop()
+            encoder?.release()
             handlerThread?.quitSafely()
             mediaProjection?.stop()
         } catch (e: Exception) {
-            Log.e(TAG, "Akış durdurulurken hata: ${e.message}")
+            Log.e(TAG, "Durdurma hatası: ${e.message}")
         }
-        virtualDisplay = null
-        imageReader = null
+        primaryVd = null
+        snapshotVd = null
+        snapshotReader = null
+        encoder = null
         handlerThread = null
         handler = null
         mediaProjection = null
         Log.d(TAG, "Ekran akışı durduruldu")
     }
 
-    // ── Kare İşle ─────────────────────────────────────────────────────────────
+    // ── H.264 frame → Socket.io ──────────────────────────────────────────────
 
-    private fun processFrame(reader: ImageReader, width: Int, height: Int) {
+    private fun sendH264Frame(bytes: ByteArray, info: MediaCodec.BufferInfo) {
+        val isConfig   = (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0
+        val isKeyFrame = (info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0
+        val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+        val payload = JSONObject().apply {
+            put("profileId", Config.profileId)
+            put("frame", b64)
+            put("ts", System.currentTimeMillis())
+            put("isKeyFrame", isKeyFrame)
+            put("isConfig", isConfig)
+        }
+        SocketManager.emitSignal("screen_frame", payload)
+        Log.v(TAG, "H.264: ${bytes.size}B keyFrame=$isKeyFrame config=$isConfig")
+    }
+
+    // ── Snapshot → Supabase JPEG ─────────────────────────────────────────────
+
+    private fun captureSnapshotForSupabase() {
+        val reader = snapshotReader ?: return
         val image = reader.acquireLatestImage() ?: return
-        var wideBitmap: Bitmap? = null
+        var wideBmp: Bitmap? = null
         var bitmap: Bitmap? = null
         try {
-            val planes = image.planes
-            val buffer = planes[0].buffer
-            val pixelStride = planes[0].pixelStride  // RGBA_8888 → 4
-            val rowStride = planes[0].rowStride      // >= width * 4 (padding olabilir)
-            val rowPadding = rowStride - pixelStride * width
-            Log.d(TAG, "Frame alındı: ${image.width}x${image.height} rowStride=$rowStride pixelStride=$pixelStride rowPadding=$rowPadding")
+            val plane      = image.planes[0]
+            val buf        = plane.buffer
+            val pixStride  = plane.pixelStride
+            val rowStride  = plane.rowStride
+            val rowPadding = rowStride - pixStride * image.width
+            val bmpW       = image.width + rowPadding / pixStride
 
-            // Geniş bitmap: rowStride'ın tüm satırı kapsaması için genişlik olarak kullan
-            val bmpWidth = width + rowPadding / pixelStride
-            wideBitmap = Bitmap.createBitmap(bmpWidth, height, Bitmap.Config.ARGB_8888)
-            wideBitmap.copyPixelsFromBuffer(buffer)
+            wideBmp = Bitmap.createBitmap(bmpW, image.height, Bitmap.Config.ARGB_8888)
+            wideBmp.copyPixelsFromBuffer(buf)
 
-            // Padding varsa sağdan kırp → gerçek ekran boyutu
             bitmap = if (rowPadding > 0) {
-                Bitmap.createBitmap(wideBitmap, 0, 0, width, height)
-            } else {
-                wideBitmap.also { wideBitmap = null }  // recycle için takip
-            }
+                Bitmap.createBitmap(wideBmp, 0, 0, image.width, image.height)
+                    .also { wideBmp?.recycle(); wideBmp = null }
+            } else wideBmp.also { wideBmp = null }
 
-            val stream = ByteArrayOutputStream(width * height / 4)
-            bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, stream)
-
-            val jpegBytes = stream.toByteArray()
-            if (jpegBytes.isEmpty()) {
-                Log.w(TAG, "JPEG boş — kare atlanıyor")
-                return
-            }
-
-            // Signal server (port 8001) → dashboard'a ilet
-            val b64 = Base64.encodeToString(jpegBytes, Base64.NO_WRAP)
-            val payload = JSONObject().apply {
-                put("profileId", Config.profileId)
-                put("frame", b64)
-                put("ts", System.currentTimeMillis())
-            }
-            SocketManager.emitSignal("screen_frame", payload)
-            Log.v(TAG, "Kare gönderildi: ${jpegBytes.size} bytes")
-
-            // Supabase Storage — direkt upload + Realtime broadcast
-            uploadToSupabase(jpegBytes)
+            val out = ByteArrayOutputStream(image.width * image.height / 8)
+            bitmap?.compress(Bitmap.CompressFormat.JPEG, 50, out)
+            val jpegBytes = out.toByteArray()
+            if (jpegBytes.isNotEmpty()) uploadToSupabase(jpegBytes)
 
         } catch (e: Exception) {
-            Log.e(TAG, "processFrame hatası: ${e.message}")
+            Log.e(TAG, "Snapshot hatası: ${e.message}")
         } finally {
-            // image her zaman kapatılmalı — kapatılmazsa sonraki acquireLatestImage bloklanır
             image.close()
-            wideBitmap?.recycle()
+            wideBmp?.recycle()
             bitmap?.recycle()
         }
     }
 
-    // ── Supabase Storage — direkt upload (üzerine yaz) ───────────────────────
+    // ── Supabase Storage upload ───────────────────────────────────────────────
 
     private fun uploadToSupabase(jpegBytes: ByteArray) {
-        Log.d(TAG, "Supabase upload başlıyor: ${jpegBytes.size} bytes → ${Config.profileId}/live.jpg")
         try {
-            val path = "${Config.profileId}/live.jpg"
-            val body = jpegBytes.toRequestBody("image/jpeg".toMediaTypeOrNull())
-            val request = Request.Builder()
+            val path  = "${Config.profileId}/live.jpg"
+            val body  = jpegBytes.toRequestBody("image/jpeg".toMediaTypeOrNull())
+            val req   = Request.Builder()
                 .url("${Config.SUPABASE_URL}/storage/v1/object/screenshots/$path")
                 .addHeader("apikey", Config.SUPABASE_SERVICE_KEY)
                 .addHeader("Authorization", "Bearer ${Config.SUPABASE_SERVICE_KEY}")
                 .addHeader("x-upsert", "true")
                 .put(body)
                 .build()
-            httpClient.newCall(request).enqueue(object : Callback {
-                override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+            httpClient.newCall(req).enqueue(object : Callback {
+                override fun onFailure(call: okhttp3.Call, e: IOException) {
                     Log.w(TAG, "Supabase upload hatası: ${e.message}")
                 }
                 override fun onResponse(call: okhttp3.Call, response: Response) {
-                    if (response.isSuccessful) {
-                        response.close()
-                        broadcastToRealtime()
-                    } else {
-                        val body = response.body?.string() ?: "(boş)"
-                        Log.e(TAG, "Supabase upload başarısız: HTTP ${response.code} — $body")
-                        response.close()
-                    }
+                    if (response.isSuccessful) { response.close(); broadcastToRealtime() }
+                    else { Log.e(TAG, "Supabase HTTP ${response.code}"); response.close() }
                 }
             })
         } catch (e: Exception) {
@@ -226,11 +282,11 @@ object ScreenStreamManager {
         }
     }
 
-    // ── Supabase Realtime Broadcast ───────────────────────────────────────────
+    // ── Supabase Realtime broadcast ───────────────────────────────────────────
 
     private fun broadcastToRealtime() {
         try {
-            val messages = org.json.JSONArray().apply {
+            val messages = JSONArray().apply {
                 put(JSONObject().apply {
                     put("topic", "realtime:screen-${Config.profileId}")
                     put("event", "broadcast")
@@ -245,19 +301,15 @@ object ScreenStreamManager {
             }
             val body = JSONObject().apply { put("messages", messages) }
                 .toString().toRequestBody("application/json".toMediaTypeOrNull())
-            val request = Request.Builder()
+            val req = Request.Builder()
                 .url("${Config.SUPABASE_URL}/realtime/v1/api/broadcast")
                 .addHeader("apikey", Config.SUPABASE_SERVICE_KEY)
                 .addHeader("Authorization", "Bearer ${Config.SUPABASE_SERVICE_KEY}")
                 .post(body)
                 .build()
-            httpClient.newCall(request).enqueue(object : Callback {
-                override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
-                    Log.w(TAG, "Realtime broadcast hatası: ${e.message}")
-                }
-                override fun onResponse(call: okhttp3.Call, response: Response) {
-                    response.close()
-                }
+            httpClient.newCall(req).enqueue(object : Callback {
+                override fun onFailure(call: okhttp3.Call, e: IOException) {}
+                override fun onResponse(call: okhttp3.Call, response: Response) { response.close() }
             })
         } catch (e: Exception) {
             Log.e(TAG, "Realtime broadcast exception: ${e.message}")
