@@ -33,7 +33,8 @@ class UpdateManager(private val context: Context) {
     fun checkForUpdates() {
         Thread {
             try {
-                val currentBuild = BuildConfig.VERSION_CODE
+                val currentBuild = context.packageManager
+                    .getPackageInfo(context.packageName, 0).versionCode.toInt()
                 val response = client.newCall(
                     Request.Builder()
                         .url("${Config.backendUrl}/api/app/version")
