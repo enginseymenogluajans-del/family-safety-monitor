@@ -126,7 +126,9 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
 
     // Signal server (port 8001) — komut göndermek için
     const signalUrl = backendUrl.replace(":8000", ":8001");
-    const newSignalSocket = io(signalUrl, { transports: ["websocket"] });
+    const newSignalSocket = io(signalUrl, {
+      transports: ["websocket", "polling"],
+    });
     setSignalSocket(newSignalSocket);
 
     newSignalSocket.on("connect", () => {
@@ -281,6 +283,7 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
 
     // 1s polling fallback — Realtime gelişmezse Storage URL'ini doğrudan yenile
     const pollId = setInterval(() => {
+      if (streamCodec === "h264") return;
       const url = `${supabaseUrl}/storage/v1/object/public/screenshots/${profileId}/live.jpg?t=${Date.now()}`;
       setLiveFrame(url);
     }, 1000);
@@ -289,7 +292,7 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
       supabase.removeChannel(channel);
       clearInterval(pollId);
     };
-  }, [streaming, profileId]);
+  }, [streaming, profileId, streamCodec]);
 
   // ── Canlı Akış Kontrol ────────────────────────────────────────────────────
   const startStream = () => {
@@ -324,8 +327,11 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
   // ── Uzaktan Tıklama ───────────────────────────────────────────────────────
   const handleLiveImageClick = useCallback(
     (e) => {
-      if (!clickMode || !socket || !liveImgRef.current) return;
-      const rect = liveImgRef.current.getBoundingClientRect();
+      if (!clickMode || !socket) return;
+      const activeEl =
+        streamCodec === "h264" ? canvasRef.current : liveImgRef.current;
+      if (!activeEl) return;
+      const rect = activeEl.getBoundingClientRect();
       const xPercent = (e.clientX - rect.left) / rect.width;
       const yPercent = (e.clientY - rect.top) / rect.height;
       socket.emit("remote_click", {
@@ -334,7 +340,7 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
         y_percent: yPercent,
       });
     },
-    [clickMode, socket, profileId],
+    [clickMode, socket, profileId, streamCodec],
   );
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -498,10 +504,27 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-3">
                       <div className="flex gap-2 w-full">
-                        <button className="flex-1 bg-white/10 hover:bg-white/20 backdrop-blur-md p-2 rounded-lg transition-colors">
+                        <button
+                          className="flex-1 bg-white/10 hover:bg-white/20 backdrop-blur-md p-2 rounded-lg transition-colors"
+                          onClick={() =>
+                            window.open(
+                              ss.url?.startsWith("data:")
+                                ? ss.url
+                                : `${backendUrl}${ss.url}`,
+                              "_blank",
+                            )
+                          }
+                        >
                           <Maximize2 className="w-4 h-4 mx-auto" />
                         </button>
-                        <button className="bg-red-500/20 hover:bg-red-500/40 text-red-400 p-2 rounded-lg transition-colors border border-red-500/20">
+                        <button
+                          className="bg-red-500/20 hover:bg-red-500/40 text-red-400 p-2 rounded-lg transition-colors border border-red-500/20"
+                          onClick={() =>
+                            setScreenshots((prev) =>
+                              prev.filter((s) => s.id !== ss.id),
+                            )
+                          }
+                        >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
