@@ -8,7 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from services import icloud_service, gmail_service
@@ -2047,6 +2047,97 @@ def _require_profile(profile_id: str) -> Profile:
     if profile_id not in _profiles:
         raise HTTPException(status_code=404, detail="Profil bulunamadı")
     return _profiles[profile_id]
+
+
+# ── WhatsApp Local Backup ──────────────────────────────────────────────────────
+
+_WA_BACKUP_DIR = Path(__file__).parent / "data" / "whatsapp_backup"
+_WA_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@app.post("/api/whatsapp-backup/{profile_id}")
+async def upload_whatsapp_backup(profile_id: str, request: Request):
+    body = await request.json()
+    messages = body.get("messages", [])
+    source = body.get("source", "local_backup")
+    if not messages:
+        raise HTTPException(status_code=400, detail="messages boş")
+
+    backup_file = _WA_BACKUP_DIR / f"{profile_id}.json"
+    existing: list = []
+    if backup_file.exists():
+        with open(backup_file, encoding="utf-8") as f:
+            existing = json.load(f)
+
+    existing_ids = {m.get("id") for m in existing}
+    new_msgs = [m for m in messages if m.get("id") not in existing_ids]
+    existing.extend(new_msgs)
+    existing.sort(key=lambda m: m.get("timestamp", 0), reverse=True)
+
+    backup_file.write_text(json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"status": "ok", "total": len(existing), "new": len(new_msgs), "source": source}
+
+
+@app.get("/api/whatsapp-backup/{profile_id}")
+async def get_whatsapp_backup(profile_id: str, limit: int = 200):
+    backup_file = _WA_BACKUP_DIR / f"{profile_id}.json"
+    if not backup_file.exists():
+        return []
+    with open(backup_file, encoding="utf-8") as f:
+        messages = json.load(f)
+    return messages[:limit]
+
+
+# ── OTA Güncelleme ─────────────────────────────────────────────────────────────
+
+APK_DIR = Path(__file__).parent / "apk"
+APK_DIR.mkdir(exist_ok=True)
+APK_VERSION_FILE = APK_DIR / "version.json"
+APK_FILE = APK_DIR / "app-release.apk"
+
+
+def _read_apk_version() -> dict:
+    if APK_VERSION_FILE.exists():
+        with open(APK_VERSION_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    return {"version": "1.0.0", "build": 1, "changelog": ""}
+
+
+@app.get("/api/app/version")
+async def get_app_version(request: Request):
+    ver = _read_apk_version()
+    base = str(request.base_url).rstrip("/")
+    return {
+        "version":   ver.get("version", "1.0.0"),
+        "build":     ver.get("build", 1),
+        "url":       f"{base}/api/app/download",
+        "changelog": ver.get("changelog", ""),
+    }
+
+
+@app.get("/api/app/download")
+async def download_apk():
+    if not APK_FILE.exists():
+        raise HTTPException(status_code=404, detail="APK bulunamadı")
+    return FileResponse(
+        path=str(APK_FILE),
+        media_type="application/vnd.android.package-archive",
+        filename="family-guard.apk",
+    )
+
+
+@app.post("/api/app/upload")
+async def upload_apk(
+    apk: UploadFile = File(...),
+    version: str = Form(...),
+    build: int = Form(...),
+    changelog: str = Form(""),
+):
+    content = await apk.read()
+    APK_FILE.write_bytes(content)
+    ver_data = {"version": version, "build": build, "changelog": changelog}
+    APK_VERSION_FILE.write_text(json.dumps(ver_data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"status": "ok", "version": version, "build": build, "size_bytes": len(content)}
 
 
 if __name__ == "__main__":

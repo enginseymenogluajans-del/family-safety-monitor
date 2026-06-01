@@ -23,10 +23,94 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
 
   // ── Canlı Akış State ──────────────────────────────────────────────────────
   const [streaming, setStreaming] = useState(false);
-  const [liveFrame, setLiveFrame] = useState(null); // base64 JPEG
+  const [liveFrame, setLiveFrame] = useState(null); // base64 JPEG veya URL
   const [streamError, setStreamError] = useState(null);
   const [clickMode, setClickMode] = useState(false);
+  const [streamCodec, setStreamCodec] = useState(null); // "h264" | "jpeg" | null
   const liveImgRef = useRef(null);
+  const canvasRef = useRef(null);
+  const decoderRef = useRef(null);
+  const configChunkRef = useRef(null); // H.264 SPS/PPS config
+
+  // ── WebCodecs H.264 decoder kurulumu ─────────────────────────────────────
+  const initH264Decoder = useCallback(() => {
+    if (typeof VideoDecoder === "undefined") return false;
+    try {
+      const canvas = canvasRef.current;
+      if (!canvas) return false;
+      const ctx = canvas.getContext("2d");
+
+      const decoder = new VideoDecoder({
+        output: (frame) => {
+          canvas.width = frame.displayWidth;
+          canvas.height = frame.displayHeight;
+          ctx.drawImage(frame, 0, 0);
+          frame.close();
+        },
+        error: (e) => {
+          console.warn("[H264] VideoDecoder hatası:", e);
+          setStreamCodec("jpeg");
+          decoderRef.current = null;
+        },
+      });
+
+      decoder.configure({
+        codec: "avc1.42001f",
+        optimizeForLatency: true,
+        hardwareAcceleration: "prefer-hardware",
+      });
+
+      decoderRef.current = decoder;
+      setStreamCodec("h264");
+      return true;
+    } catch (e) {
+      console.warn("[H264] WebCodecs desteklenmiyor:", e);
+      return false;
+    }
+  }, []);
+
+  // ── Annex B → AVCC dönüşümü (Android MediaCodec → WebCodecs) ─────────────
+  const annexBtoAVCC = useCallback((data) => {
+    const bytes = new Uint8Array(data);
+    const naluList = [];
+    let i = 0;
+    while (i < bytes.length - 4) {
+      if (
+        bytes[i] === 0 &&
+        bytes[i + 1] === 0 &&
+        bytes[i + 2] === 0 &&
+        bytes[i + 3] === 1
+      ) {
+        let end = bytes.length;
+        for (let j = i + 4; j < bytes.length - 4; j++) {
+          if (
+            bytes[j] === 0 &&
+            bytes[j + 1] === 0 &&
+            bytes[j + 2] === 0 &&
+            bytes[j + 3] === 1
+          ) {
+            end = j;
+            break;
+          }
+        }
+        naluList.push(bytes.slice(i + 4, end));
+        i = end;
+      } else {
+        i++;
+      }
+    }
+    if (!naluList.length) return data;
+    const totalLen = naluList.reduce((s, n) => s + 4 + n.length, 0);
+    const out = new Uint8Array(totalLen);
+    let offset = 0;
+    naluList.forEach((nalu) => {
+      const view = new DataView(out.buffer, offset);
+      view.setUint32(0, nalu.length, false);
+      out.set(nalu, offset + 4);
+      offset += 4 + nalu.length;
+    });
+    return out.buffer;
+  }, []);
 
   // ── Socket.io Kurulum ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -56,12 +140,49 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
       );
     });
 
-    // Canlı kare — signal server relay'inden gelir
+    // Canlı kare — signal server relay'inden gelir (H.264 veya JPEG)
     newSignalSocket.on("screen_frame", (data) => {
-      if (data.profileId === profileId && data.frame) {
-        setLiveFrame(`data:image/jpeg;base64,${data.frame}`);
-        setStreamError(null);
+      if (data.profileId !== profileId || !data.frame) return;
+      setStreamError(null);
+
+      // H.264 akışı: isConfig veya isKeyFrame flag'i varsa MediaCodec çıktısıdır
+      if (data.isConfig !== undefined) {
+        const raw = Uint8Array.from(atob(data.frame), (c) => c.charCodeAt(0));
+
+        // SPS/PPS config paketi → sakla, decoder'ı (yeniden) başlat
+        if (data.isConfig) {
+          configChunkRef.current = raw;
+          if (!decoderRef.current) initH264Decoder();
+          return;
+        }
+
+        // WebCodecs aktifse H.264 decode et
+        const decoder = decoderRef.current;
+        if (decoder && decoder.state === "configured") {
+          try {
+            const avcc = annexBtoAVCC(raw.buffer);
+            decoder.decode(
+              new EncodedVideoChunk({
+                type: data.isKeyFrame ? "key" : "delta",
+                timestamp: data.ts ?? Date.now() * 1000,
+                data: avcc,
+              }),
+            );
+            setStreamCodec("h264");
+          } catch (e) {
+            console.warn("[H264] decode hatası:", e);
+          }
+          return;
+        }
+
+        // WebCodecs yok — JPEG fallback: Supabase Storage URL'i kullanılır
+        setStreamCodec("jpeg");
+        return;
       }
+
+      // Eski JPEG formatı (isConfig/isKeyFrame yok) — geriye dönük uyumluluk
+      setLiveFrame(`data:image/jpeg;base64,${data.frame}`);
+      setStreamCodec("jpeg");
     });
 
     // Ekran izni hatası — Android'den signal server üzerinden gelir
@@ -173,6 +294,14 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
   // ── Canlı Akış Kontrol ────────────────────────────────────────────────────
   const startStream = () => {
     if (!signalSocket) return;
+    configChunkRef.current = null;
+    if (decoderRef.current) {
+      try {
+        decoderRef.current.close();
+      } catch (_) {}
+      decoderRef.current = null;
+    }
+    setStreamCodec(null);
     signalSocket.emit("command", { type: "screen", profileId });
     setStreaming(true);
     setLiveFrame(null);
@@ -181,6 +310,13 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
 
   const stopStream = () => {
     if (!signalSocket) return;
+    if (decoderRef.current) {
+      try {
+        decoderRef.current.close();
+      } catch (_) {}
+      decoderRef.current = null;
+    }
+    setStreamCodec(null);
     signalSocket.emit("command", { type: "stop", profileId });
     setStreaming(false);
   };
@@ -276,6 +412,18 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
               <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">
                 CANLI YAYIN
               </span>
+              {/* Codec göstergesi */}
+              {streamCodec && (
+                <span
+                  className={`ml-2 px-1.5 py-0.5 rounded text-[9px] font-black uppercase ${
+                    streamCodec === "h264"
+                      ? "bg-violet-500/20 text-violet-300 border border-violet-500/30"
+                      : "bg-zinc-700 text-zinc-400"
+                  }`}
+                >
+                  {streamCodec === "h264" ? "H.264" : "JPEG"}
+                </span>
+              )}
               {clickMode && (
                 <span className="ml-auto text-[9px] font-black text-amber-400 uppercase">
                   Ekrana tıklayarak uzaktan kontrol et
@@ -291,7 +439,16 @@ const LiveScreenshots = ({ profileId, backendUrl }) => {
                   <p className="text-xs font-bold">Ekran Akışı Hatası</p>
                   <p className="text-[11px] text-red-300">{streamError}</p>
                 </div>
+              ) : streamCodec === "h264" ? (
+                /* H.264: WebCodecs canvas */
+                <canvas
+                  ref={canvasRef}
+                  onClick={handleLiveImageClick}
+                  className="max-h-[70vh] w-auto object-contain select-none"
+                  style={{ display: "block" }}
+                />
               ) : liveFrame ? (
+                /* JPEG: img tag (fallback veya Supabase URL) */
                 <img
                   ref={liveImgRef}
                   src={liveFrame}
