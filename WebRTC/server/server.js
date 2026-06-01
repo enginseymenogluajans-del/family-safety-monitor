@@ -71,8 +71,8 @@ const io = new Server(server, {
     methods: ["GET", "POST"],
   },
   transports: ["websocket"],
-  pingTimeout: 60000,
-  pingInterval: 25000,
+  pingTimeout: 120000,
+  pingInterval: 30000,
   upgradeTimeout: 30000,
   allowUpgrades: false,
 });
