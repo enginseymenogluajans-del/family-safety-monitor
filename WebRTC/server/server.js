@@ -7,8 +7,7 @@ const axios = require("axios");
 
 // ── Supabase config — çevre değişkeninden oku, hardcode etme ─────────────────
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY =
-  process.env.SUPABASE_KEY || process.env.SUPABASE_SERVICE_KEY;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
   console.warn(

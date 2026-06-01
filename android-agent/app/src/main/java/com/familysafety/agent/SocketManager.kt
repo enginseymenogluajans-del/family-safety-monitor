@@ -169,6 +169,11 @@ object SocketManager {
                 Log.w(TAG, "Signal server bağlantısı kesildi ($reason) — yeniden bağlanılacak")
             }
 
+            // Ping/pong — server timeout'unu engelle
+            signalSocket?.on("ping") {
+                signalSocket?.emit("pong")
+            }
+
             // Dashboard'dan gelen canlı kontrol komutları — MAIN THREAD'de çalıştır
             signalSocket?.on("command") { args ->
                 try {
