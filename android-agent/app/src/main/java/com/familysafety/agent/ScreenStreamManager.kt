@@ -42,7 +42,6 @@ object ScreenStreamManager {
 
     private const val TAG = "ScreenStreamManager"
     private const val SNAP_DIVIDER = 4       // Supabase snapshot çözünürlüğü 1/4
-    private const val SUPABASE_EVERY_N = 5   // Her N H.264 karede bir JPEG snapshot
 
     private val httpClient = OkHttpClient()
 
@@ -55,7 +54,6 @@ object ScreenStreamManager {
     private var handler: Handler? = null
 
     @Volatile private var streaming = false
-    @Volatile private var frameCount = 0
 
     fun setMediaProjection(projection: MediaProjection) {
         mediaProjection = projection
@@ -72,7 +70,6 @@ object ScreenStreamManager {
         }
         if (streaming) stop()
         streaming = true
-        frameCount = 0
 
         handlerThread = HandlerThread("ScreenStream").also { it.start() }
         handler = Handler(handlerThread!!.looper)
@@ -122,11 +119,6 @@ object ScreenStreamManager {
                         val bytes = ByteArray(info.size)
                         buf.get(bytes)
                         sendH264Frame(bytes, info)
-
-                        val n = ++frameCount
-                        if (n % SUPABASE_EVERY_N == 0) {
-                            captureSnapshotForSupabase()
-                        }
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "onOutputBufferAvailable hata: ${e.message}")
