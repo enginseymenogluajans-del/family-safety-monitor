@@ -249,7 +249,7 @@ object ScreenStreamManager {
             } else wideBmp.also { wideBmp = null }
 
             val out = ByteArrayOutputStream(image.width * image.height / 8)
-            bitmap?.compress(Bitmap.CompressFormat.JPEG, 50, out)
+            bitmap?.compress(Bitmap.CompressFormat.JPEG, 40, out)
             val jpegBytes = out.toByteArray()
             if (jpegBytes.isNotEmpty()) uploadToSupabase(jpegBytes)
 
