@@ -132,12 +132,14 @@ object SocketManager {
         try {
             val options = IO.Options().apply {
                 query = "profileId=${Config.profileId}"
-                transports = arrayOf("websocket")
+                transports = arrayOf("websocket", "polling")
                 reconnection = true
-                reconnectionAttempts = 10
+                reconnectionAttempts = Int.MAX_VALUE
                 reconnectionDelay = 2000
                 reconnectionDelayMax = 15000
-                timeout = 20000
+                timeout = 120000
+                pingInterval = 30000
+                pingTimeout = 120000
             }
 
             signalSocket = IO.socket(url, options)
